@@ -71,34 +71,20 @@ struct RootView: View {
             }
             .disabled(model.phase == .cleaning)
             .help(scanHelp)
+            .accessibilityLabel(model.isScanning ? "Stop scanning" : "Rescan")
         }
 
         ToolbarItemGroup(placement: .primaryAction) {
             Menu {
-                Picker("Appearance", selection: $appearanceRaw) {
-                    ForEach(Appearance.allCases) { option in
-                        Label(option.title, systemImage: option.symbol).tag(option.rawValue)
-                    }
-                }
-                .pickerStyle(.inline)
-
-                Divider()
-
-                Toggle("Protect personal folders", isOn: Binding(
-                    get: { protectedLocations },
-                    set: { enabled in
-                        if enabled {
-                            protectedLocations = true
-                        } else {
-                            showDisableProtectionConfirmation = true
-                        }
-                    }
-                ))
+                SettingsControls(appearanceRaw: $appearanceRaw,
+                                 protectedLocations: $protectedLocations,
+                                 showDisableProtectionConfirmation: $showDisableProtectionConfirmation)
             } label: {
                 Image(systemName: protectedLocations ? "gearshape" : "exclamationmark.triangle.fill")
                     .foregroundStyle(protectedLocations ? Color.primary : Theme.danger)
             }
             .help(protectedLocations ? "Settings" : "Personal-folder protection is off")
+            .accessibilityLabel(protectedLocations ? "Settings" : "Settings, personal-folder protection is off")
 
             // Hand-picked pages: Trash-only, so a single action and no mode picker.
             if model.route == .files, model.filesPhase == .ready, !model.files.isEmpty {
@@ -132,12 +118,18 @@ struct RootView: View {
             }
 
             if model.route != .files, model.route != .artifacts, model.phase == .ready, model.scopedCleanableCount > 0 {
-                Picker("After cleaning", selection: $model.mode) {
-                    ForEach(DeletionMode.allCases) { mode in
-                        Text(mode.title).tag(mode)
+                Menu {
+                    Section("After cleaning") {
+                        Picker("After cleaning", selection: $model.mode) {
+                            ForEach(DeletionMode.allCases) { mode in
+                                Text(mode.title).tag(mode)
+                            }
+                        }
+                        .pickerStyle(.inline)
                     }
+                } label: {
+                    Label(model.mode.title, systemImage: model.mode == .trash ? "trash" : "trash.slash")
                 }
-                .pickerStyle(.menu)
                 .help(model.mode.explanation)
 
                 if model.bytesSelectedOutsideScope > 0 {
@@ -292,6 +284,7 @@ struct RootView: View {
             }
             .buttonStyle(.bordered)
             .tint(Theme.danger)
+            .accessibilityLabel("Turn personal-folder protection back on")
         }
         .padding(12)
         .background(
@@ -302,6 +295,9 @@ struct RootView: View {
             RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .stroke(Theme.danger.opacity(0.35), lineWidth: 1)
         )
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Warning: Personal-folder protection is off. Silt will not refuse Documents, Photos, SSH, and other protected folders.")
+        .accessibilityAddTraits(.isStaticText)
     }
 
     @ViewBuilder

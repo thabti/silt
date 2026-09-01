@@ -91,9 +91,8 @@ struct FilesView: View {
 
     private var scanningCard: some View {
         VStack(spacing: 12) {
-            ProgressView(value: min(1, Double(model.fileProgress.visited) / 400_000))
-                .progressViewStyle(.linear)
-                .frame(maxWidth: 420)
+            ProgressView()
+                .controlSize(.small)
             Text("\(model.fileProgress.visited.formatted()) items checked · \(model.fileProgress.found) big ones so far")
                 .font(Theme.figure(13, weight: .medium))
                 .foregroundStyle(.secondary)
@@ -245,6 +244,8 @@ struct FileRow: View {
         HStack(spacing: 14) {
             Button(action: onToggle) { CheckDot(isOn: isSelected) }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Select \(entry.name)")
+                .accessibilityValue(isSelected ? "On" : "Off")
 
             IconTile(symbol: entry.kind.symbol, tint: entry.kind.tint, size: 36)
 
@@ -291,5 +292,9 @@ struct FileRow: View {
         .contentShape(Rectangle())
         .onTapGesture { onToggle() }
         .onHover { hovering = $0 }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(entry.name), \(entry.kind.title), \(entry.bytes.byteLabel)")
+        .accessibilityValue(isSelected ? "Selected" : "Not selected")
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }

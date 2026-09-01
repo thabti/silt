@@ -143,10 +143,23 @@ struct ReportSheet: View {
             }
 
             if report.failureCount > 0 || !report.blocked.isEmpty {
-                Text("\(report.failureCount + report.blocked.count) items were left alone — usually because macOS protects them or an app has them open.")
-                    .font(Theme.heading(12))
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
+                DisclosureGroup("\(report.failureCount + report.blocked.count) items left alone") {
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 8) {
+                            ForEach(failureReasons, id: \.self) { reason in
+                                Text(reason)
+                                    .font(Theme.heading(12, weight: .regular))
+                                    .foregroundStyle(.secondary)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                        }
+                    }
+                    .frame(maxHeight: 140)
+                    .padding(.top, 8)
+                }
+                .font(Theme.heading(12, weight: .medium))
+                .padding(12)
+                .background(RoundedRectangle(cornerRadius: 10).fill(Color.primary.opacity(0.04)))
             }
 
             Button("Done") { model.dismissReport() }
@@ -156,5 +169,11 @@ struct ReportSheet: View {
         }
         .padding(28)
         .frame(width: 480)
+    }
+
+    private var failureReasons: [String] {
+        report.outcomes.flatMap { outcome in
+            outcome.failures.map { "\(outcome.name): \($0)" }
+        } + report.blocked
     }
 }

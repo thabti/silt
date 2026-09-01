@@ -23,7 +23,7 @@ struct OverviewView: View {
                             .font(Theme.heading(13))
                             .foregroundStyle(.secondary)
                     } else {
-                        Text("\(trash.bytes.byteLabel) · \(trash.fileCount.formatted()) \(trash.fileCount == 1 ? "item" : "items")")
+                        Text("\(trash.bytes.byteLabel) · \(trash.children.count.formatted()) \(trash.children.count == 1 ? "item" : "items")")
                             .font(Theme.figure(13, weight: .medium))
                             .foregroundStyle(.secondary)
                     }

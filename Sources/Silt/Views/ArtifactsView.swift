@@ -107,7 +107,10 @@ private struct ArtifactRow: View {
 
     var body: some View {
         HStack(spacing: 14) {
-            Button(action: onToggle) { CheckDot(isOn: isSelected) }.buttonStyle(.plain)
+            Button(action: onToggle) { CheckDot(isOn: isSelected) }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Select \(artifact.projectName)")
+                .accessibilityValue(isSelected ? "On" : "Off")
             IconTile(symbol: "folder.badge.gearshape", tint: Theme.accent, size: 36)
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 8) {
@@ -130,5 +133,9 @@ private struct ArtifactRow: View {
         .padding(.vertical, 9).padding(.horizontal, 12).contentShape(Rectangle())
         .background(RoundedRectangle(cornerRadius: 8).fill(hovering ? Color.primary.opacity(0.04) : .clear))
         .onTapGesture(perform: onToggle).onHover { hovering = $0 }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(artifact.projectName), \(artifact.pattern.title), \(artifact.bytes.byteLabel)")
+        .accessibilityValue(isSelected ? "Selected" : "Not selected")
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }

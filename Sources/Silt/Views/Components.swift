@@ -87,6 +87,9 @@ struct CategoryCard: View {
         }
         .buttonStyle(.plain)
         .onHover { hovering = $0 }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(category.title), \(bytes.byteLabel), \(bucketCount) locations")
+        .accessibilityValue(category == .review ? "Manual only" : (selectedBytes > 0 ? "\(selectedBytes.byteLabel) selected" : "Nothing selected"))
     }
 }
 
@@ -108,6 +111,8 @@ struct BucketRow: View {
                 Button(action: onToggle) { CheckDot(isOn: isSelected) }
                     .buttonStyle(.plain)
                     .padding(.top, 6)
+                    .accessibilityLabel("Select \(target.name)")
+                    .accessibilityValue(isSelected ? "On" : "Off")
             } else {
                 Image(systemName: "lock.fill")
                     .font(.system(size: 11, weight: .medium))
@@ -165,6 +170,10 @@ struct BucketRow: View {
         .contentShape(Rectangle())
         .onTapGesture { if deletable { onToggle() } }
         .onHover { hovering = $0 }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(target.name), \(target.kind.label), \(bucket.bytes.byteLabel)")
+        .accessibilityValue(deletable ? (isSelected ? "Selected" : "Not selected") : "Review only")
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }
 

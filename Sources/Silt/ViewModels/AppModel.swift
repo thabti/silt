@@ -105,9 +105,12 @@ final class AppModel: ObservableObject {
     private var scanTask: Task<Void, Never>?
     private var reviewTask: Task<Void, Never>?
     private var lastCleanedIDs: Set<String> = []
+    private var catalogLoadTask: Task<[CleanTarget], Never>?
+    private var presentTargets: [CleanTarget] = []
 
     init() {
         disk = DiskSpace.snapshot()
+        startCatalogLoad()
     }
 
     // MARK: - Derived numbers (all reads hit the pre-built index)
@@ -220,13 +223,14 @@ final class AppModel: ObservableObject {
         disk = DiskSpace.snapshot()
 
         scanTask = Task { [weak self] in
-            let targets = await Task.detached { () -> [CleanTarget] in
-                let present = Catalog.present()
-                guard let ids else { return Scanner.quickTargets(present) }
-                return present.filter { ids.contains($0.id) }
-            }.value
+            guard let self else { return }
+            let targets = await self.loadPresentTargets(refresh: ids == nil && self.lastScan != nil)
+            let filtered: [CleanTarget] = {
+                guard let ids else { return Scanner.quickTargets(targets) }
+                return targets.filter { ids.contains($0.id) }
+            }()
 
-            guard let self, !Task.isCancelled else { return }
+            guard !Task.isCancelled else { return }
 
             await MainActor.run {
                 if !isPartial {
@@ -234,10 +238,10 @@ final class AppModel: ObservableObject {
                     // just because the cheap buckets are being re-measured.
                     self.replaceAll(with: self.scanned.filter { $0.target.kind == .review })
                 }
-                self.scanProgress = ScanProgress(completed: 0, total: targets.count, currentName: "")
+                self.scanProgress = ScanProgress(completed: 0, total: filtered.count, currentName: "")
             }
 
-            await Scanner.stream(targets: targets) { bucket in
+            await Scanner.stream(targets: filtered) { bucket in
                 Task { @MainActor [weak self] in
                     self?.merge(bucket)
                 }
@@ -303,9 +307,10 @@ final class AppModel: ObservableObject {
         reviewState = .measuring
 
         reviewTask = Task { [weak self] in
-            let targets = await Task.detached { Scanner.reviewTargets(Catalog.present()) }.value
+            guard let self else { return }
+            let targets = Scanner.reviewTargets(await self.loadPresentTargets())
 
-            guard let self, !Task.isCancelled else { return }
+            guard !Task.isCancelled else { return }
             await MainActor.run {
                 self.reviewProgress = ScanProgress(completed: 0, total: targets.count, currentName: "")
             }
@@ -344,7 +349,25 @@ final class AppModel: ObservableObject {
     }
 
     /// Review folders present on this Mac, so the sidebar row exists before anything is measured.
-    let hasReviewTargets: Bool = !Scanner.reviewTargets(Catalog.present()).isEmpty
+    @Published private(set) var hasReviewTargets = false
+
+    private func startCatalogLoad() {
+        catalogLoadTask = Task.detached { Catalog.present() }
+    }
+
+    private func loadPresentTargets(refresh: Bool = false) async -> [CleanTarget] {
+        if refresh {
+            catalogLoadTask?.cancel()
+            presentTargets = []
+            startCatalogLoad()
+        }
+        if !presentTargets.isEmpty { return presentTargets }
+        if catalogLoadTask == nil { startCatalogLoad() }
+        let targets = await catalogLoadTask?.value ?? []
+        presentTargets = targets
+        hasReviewTargets = !Scanner.reviewTargets(targets).isEmpty
+        return targets
+    }
 
     func cancelScan() {
         scanTask?.cancel()
@@ -464,6 +487,7 @@ final class AppModel: ObservableObject {
     }
 
     private var fileTask: Task<Void, Never>?
+    private var fileNoticeTask: Task<Void, Never>?
 
     var filteredFiles: [FileEntry] {
         guard let kindFilter else { return files }
@@ -490,7 +514,7 @@ final class AppModel: ObservableObject {
         fileTask?.cancel()
         filesPhase = .scanning
         fileSelection = []
-        fileNotice = nil
+        setFileNotice(nil)
         fileProgress = FileScanProgress(visited: 0, found: 0, currentFolder: "")
 
         let minimum = fileThreshold
@@ -560,7 +584,7 @@ final class AppModel: ObservableObject {
         if !refused.isEmpty {
             notice += " \(refused.count) left alone: \(refused.prefix(2).joined(separator: "; "))"
         }
-        fileNotice = notice
+        setFileNotice(notice)
     }
 
     // MARK: - Build artifacts
@@ -574,6 +598,7 @@ final class AppModel: ObservableObject {
     @Published var artifactNotice: String?
     @Published private(set) var lastArtifactScan: Date?
     private var artifactTask: Task<Void, Never>?
+    private var artifactNoticeTask: Task<Void, Never>?
 
     var selectedArtifacts: [ProjectArtifact] { artifacts.filter { artifactSelection.contains($0.id) } }
     var selectedArtifactBytes: Int64 { selectedArtifacts.reduce(0) { $0 + $1.bytes } }
@@ -587,7 +612,7 @@ final class AppModel: ObservableObject {
     func scanArtifacts() {
         artifactTask?.cancel()
         artifactsPhase = .scanning
-        artifactNotice = nil
+        setArtifactNotice(nil)
         artifactProgress = ArtifactScanProgress(visited: 0, found: 0, currentFolder: "")
 
         artifactTask = Task { [weak self] in
@@ -648,9 +673,31 @@ final class AppModel: ObservableObject {
         artifacts.removeAll { !fm.fileExists(atPath: $0.url.path) }
         artifactSelection.formIntersection(Set(artifacts.map(\.id)))
         disk = DiskSpace.snapshot()
-        artifactNotice = "Moved \(removed) \(removed == 1 ? "artifact" : "artifacts") to the Trash — \(freed.byteLabel)." +
-            (refused.isEmpty ? "" : " \(refused.count) left alone: \(refused.prefix(2).joined(separator: "; "))")
+        setArtifactNotice("Moved \(removed) \(removed == 1 ? "artifact" : "artifacts") to the Trash — \(freed.byteLabel)." +
+            (refused.isEmpty ? "" : " \(refused.count) left alone: \(refused.prefix(2).joined(separator: "; "))"))
         refreshArtifacts(in: Array(affectedProjects))
+    }
+
+    private func setFileNotice(_ notice: String?) {
+        fileNoticeTask?.cancel()
+        fileNotice = notice
+        guard notice != nil else { return }
+        fileNoticeTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(8))
+            guard !Task.isCancelled else { return }
+            self?.fileNotice = nil
+        }
+    }
+
+    private func setArtifactNotice(_ notice: String?) {
+        artifactNoticeTask?.cancel()
+        artifactNotice = notice
+        guard notice != nil else { return }
+        artifactNoticeTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(8))
+            guard !Task.isCancelled else { return }
+            self?.artifactNotice = nil
+        }
     }
 
     private func refreshArtifacts(in projectDirectories: [URL]) {

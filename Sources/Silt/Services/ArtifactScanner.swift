@@ -12,10 +12,17 @@ enum ArtifactScanner {
     ) async -> [ProjectArtifact] {
         let fm = FileManager.default
         let home = fm.homeDirectoryForCurrentUser
+        let library = home.appendingPathComponent("Library").standardizedFileURL.path
+        var skipRoots = Set(Catalog.all.compactMap { target -> String? in
+            let path = target.path.standardizedFileURL.path
+            guard path.hasPrefix(home.path + "/"), !path.hasPrefix(library + "/") else { return nil }
+            return path
+        })
+        skipRoots.insert(home.appendingPathComponent(".Trash").standardizedFileURL.path)
         guard let top = try? fm.contentsOfDirectory(at: home, includingPropertiesForKeys: keyList) else { return [] }
 
         let roots = top.filter { url in
-            guard url.lastPathComponent != "Library",
+            guard url.lastPathComponent != "Library", !skipRoots.contains(url.standardizedFileURL.path),
                   let values = try? url.resourceValues(forKeys: keys),
                   values.isDirectory == true, values.isSymbolicLink != true else { return false }
             return true
@@ -26,7 +33,7 @@ enum ArtifactScanner {
             var next = 0
             func submit(_ index: Int) {
                 let root = roots[index]
-                group.addTask { walk(root, onProgress: onProgress, onFound: onFound) }
+                group.addTask { walk(root, skipRoots: skipRoots, onProgress: onProgress, onFound: onFound) }
             }
             while next < min(concurrency, roots.count) { submit(next); next += 1 }
             while let batch = await group.next() {
@@ -41,7 +48,7 @@ enum ArtifactScanner {
     static func scan(projectDirectories: [URL]) async -> [ProjectArtifact] {
         await withTaskGroup(of: [ProjectArtifact].self) { group in
             for directory in Set(projectDirectories.map(\.standardizedFileURL)) {
-                group.addTask { walk(directory, onProgress: { _, _, _ in }, onFound: { _ in }) }
+                group.addTask { walk(directory, skipRoots: [], onProgress: { _, _, _ in }, onFound: { _ in }) }
             }
             var results: [ProjectArtifact] = []
             for await batch in group { results.append(contentsOf: batch) }
@@ -51,6 +58,7 @@ enum ArtifactScanner {
 
     private static func walk(
         _ root: URL,
+        skipRoots: Set<String>,
         onProgress: @escaping @Sendable (Int, Int, String) -> Void,
         onFound: @escaping @Sendable (ProjectArtifact) -> Void
     ) -> [ProjectArtifact] {
@@ -72,6 +80,10 @@ enum ArtifactScanner {
             guard let values = try? url.resourceValues(forKeys: keys) else { continue }
             if values.isSymbolicLink == true { enumerator.skipDescendants(); continue }
             guard values.isDirectory == true else { continue }
+            if skipRoots.contains(url.standardizedFileURL.path) {
+                enumerator.skipDescendants()
+                continue
+            }
             guard let pattern = ArtifactPattern.matching(url) else { continue }
 
             enumerator.skipDescendants()

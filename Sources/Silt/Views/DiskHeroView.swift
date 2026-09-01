@@ -25,7 +25,7 @@ struct DiskHeroView: View {
             bar
 
             HStack(spacing: 18) {
-                legend(color: Color(nsColor: .systemGray), title: "In use",
+                legend(color: Color(nsColor: .systemGray), title: "Other",
                        value: (model.disk.used - model.junkBytes).byteLabel)
                 legend(color: Theme.accent, title: "Reclaimable", value: model.junkBytes.byteLabel)
                 legend(color: Theme.track, title: "Free", value: model.disk.free.byteLabel)
