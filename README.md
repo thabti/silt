@@ -48,15 +48,13 @@ Requirements: macOS 14+, Xcode command-line tools, and
 git clone git@github.com:thabti/silt.git
 cd silt
 brew install xcodegen          # once
-xcodegen generate              # writes Silt.xcodeproj
+make run                       # generate project, build, launch
 
-# build and launch from the terminal
-xcodebuild -project Silt.xcodeproj -scheme Silt -configuration Release \
-           -derivedDataPath build build
-open build/Build/Products/Release/Silt.app
-
-# or work in Xcode: open Silt.xcodeproj, scheme "Silt", ⌘R
+# or work in Xcode: make generate && open Silt.xcodeproj, scheme "Silt", ⌘R
 ```
+
+`make help` lists everything else — `test`, `signed`, `dmg`, `release` (sign → notarize →
+staple), `docs`, `icon`.
 
 Builds are unsigned for local use — no team, no provisioning, nothing to configure. The app
 asks for no permissions at launch; granting **Full Disk Access** (System Settings › Privacy &
@@ -64,12 +62,7 @@ Security) additionally lets it read Safari's cache and app containers, which are
 shown as *Partly locked*. It is deliberately not sandboxed — a sandboxed app cannot read other
 apps' caches.
 
-Tests:
-
-```bash
-xcodebuild -project Silt.xcodeproj -scheme SiltTests -configuration Debug \
-           -derivedDataPath build test
-```
+Tests: `make test`.
 
 ## Documentation
 

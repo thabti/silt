@@ -13,21 +13,42 @@ xcodegen generate
 
 ## Build, run, test
 
+The Makefile wraps everything (`make help` lists targets):
+
 ```bash
-# build + launch
-xcodebuild -project Silt.xcodeproj -scheme Silt -configuration Release \
-           -derivedDataPath build build
-open build/Build/Products/Release/Silt.app
+make build      # unsigned Release build (local dev)
+make run        # build + launch
+make test       # test suite
+```
 
-# all tests
-xcodebuild -project Silt.xcodeproj -scheme SiltTests -configuration Debug \
-           -derivedDataPath build test
+Or raw xcodebuild, e.g. a single test:
 
-# one test
+```bash
 xcodebuild -project Silt.xcodeproj -scheme SiltTests -configuration Debug \
            -derivedDataPath build test \
            -only-testing:SiltTests/SafetyGuardTests/testBlocksPersonalData
 ```
+
+## Distribution builds
+
+Signing uses the Developer ID Application identity for team `N762FB52VL` (override with
+`make signed TEAM_ID=...`):
+
+```bash
+make signed     # Developer ID + hardened runtime + timestamp, then verifies the signature
+make dmg        # signed .dmg in dist/
+make release    # sign → dmg → notarize → staple (the full pipeline)
+```
+
+`make notarize` needs stored notary credentials once:
+
+```bash
+xcrun notarytool store-credentials silt-notary \
+  --apple-id you@example.com --team-id N762FB52VL
+```
+
+Until notarized, `spctl` reports the dmg as "Unnotarized Developer ID" — signed correctly,
+just not yet cleared by Apple. That is expected.
 
 Builds are unsigned (`CODE_SIGN_IDENTITY: "-"`) — nothing to configure. The app is
 deliberately **not sandboxed**: a sandboxed process cannot read other apps' cache folders.
@@ -50,12 +71,6 @@ One entry in `Sources/Silt/Models/Catalog.swift`:
 ## Regenerating generated artifacts
 
 ```bash
-# docs/catalog.md — after any Catalog.swift change
-swiftc -O -o /tmp/dumpcat Sources/Silt/Models/CleanTarget.swift \
-  Sources/Silt/Models/Catalog.swift docs/tools/dump-catalog/main.swift
-/tmp/dumpcat > docs/catalog.md
-
-# app icon — after replacing Icon/appicon-source.png
-swift Icon/generate-appicon.swift Icon/appicon-source.png /tmp/out
-cp /tmp/out/icon_*.png Sources/Silt/Assets.xcassets/AppIcon.appiconset/   # then re-map names per Contents.json
+make docs   # docs/catalog.md — after any Catalog.swift change
+make icon   # icon PNGs from Icon/appicon-source.png — copy per Contents.json
 ```

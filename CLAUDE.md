@@ -8,18 +8,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 adding, removing, or renaming files, regenerate before building:
 
 ```bash
-xcodegen generate                                # requires: brew install xcodegen
+make build / make run / make test                # the usual loop (make help lists all)
+make signed / make dmg / make release            # Developer ID pipeline (team N762FB52VL)
+make docs                                        # regenerate docs/catalog.md after Catalog.swift changes
+make icon                                        # regenerate icon PNGs
 
-# build + run
-xcodebuild -project Silt.xcodeproj -scheme Silt -configuration Release \
-           -derivedDataPath build build
-open build/Build/Products/Release/Silt.app
-
-# all tests
-xcodebuild -project Silt.xcodeproj -scheme SiltTests -configuration Debug \
-           -derivedDataPath build test
-
-# a single test
+# a single test (no make target)
 xcodebuild -project Silt.xcodeproj -scheme SiltTests -configuration Debug \
            -derivedDataPath build test \
            -only-testing:SiltTests/SafetyGuardTests/testBlocksPersonalData

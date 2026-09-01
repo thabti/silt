@@ -6,3 +6,4 @@ DerivedData/
 !*.xcodeproj/project.pbxproj
 xcuserdata/
 .swiftpm/
+dist/
