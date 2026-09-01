@@ -38,6 +38,15 @@ symlink following, no `..`. Folders stay in place; only their contents are clear
 model, including what the Large Files view refuses, is in [docs/safety.md](docs/safety.md),
 and 16 tests hold it in place.
 
+## Install
+
+```bash
+brew install --cask thabti/tap/silt
+```
+
+Signed but not yet notarized — right-click → Open on first launch. Or grab the dmg from
+[Releases](https://github.com/thabti/silt/releases).
+
 ## Running it locally
 
 Requirements: macOS 14+, Xcode command-line tools, and

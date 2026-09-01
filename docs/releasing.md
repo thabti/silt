@@ -150,6 +150,20 @@ Cutting a release is:
 git tag v1.0 && git push origin v1.0
 ```
 
+### Homebrew tap
+
+`.github/homebrew/Casks/silt.rb.template` is the cask; on every `v*` tag the `homebrew` job
+downloads the released dmg, computes its sha256, renders the template, and pushes
+`Casks/silt.rb` to [`thabti/homebrew-tap`](https://github.com/thabti/homebrew-tap) — the same
+pattern kirodex uses. Users install with:
+
+```bash
+brew install --cask thabti/tap/silt
+```
+
+The repo must stay public — Homebrew downloads release assets unauthenticated (a private
+repo 404s, which is exactly how this was discovered).
+
 ### Repository secrets
 
 | Secret | Contents | Status |
@@ -159,6 +173,7 @@ git tag v1.0 && git push origin v1.0
 | `APPLE_TEAM_ID` | `N762FB52VL` | set |
 | `APPLE_ID` | Apple ID email for notarization | **not set — add to enable CI notarization** |
 | `APPLE_APP_PASSWORD` | app-specific password for that Apple ID | **not set** |
+| `GH_PAT` | token that can push to `thabti/homebrew-tap` | set |
 
 Until the last two exist, CI produces a signed-but-unnotarized dmg (fine for testing; shows
 the Gatekeeper warning on other Macs).

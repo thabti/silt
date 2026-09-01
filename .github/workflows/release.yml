@@ -78,3 +78,51 @@ jobs:
       - name: Clean up keychain
         if: always()
         run: security delete-keychain "$KEYCHAIN" || true
+
+  # ── Update Homebrew tap (kirodex pattern) ────────────────────────
+  homebrew:
+    name: Update Homebrew cask
+    needs: [release]
+    runs-on: macos-15
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract version from tag
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_ENV
+
+      - name: Download dmg and compute hash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          DMG="Silt-${VERSION}.dmg"
+          for i in $(seq 1 12); do
+            echo "Attempt $i: downloading ${DMG}..."
+            if gh release download "${GITHUB_REF_NAME}" \
+                 --repo "${{ github.repository }}" \
+                 --pattern "${DMG}" --dir /tmp 2>/dev/null; then
+              break
+            fi
+            [ "$i" -eq 12 ] && { echo "::error::Failed to download ${DMG}"; exit 1; }
+            sleep 15
+          done
+          echo "SHA256=$(shasum -a 256 /tmp/${DMG} | awk '{print $1}')" >> $GITHUB_ENV
+
+      - name: Update homebrew cask
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::error::GH_PAT secret is not set — required to push to homebrew-tap"
+            exit 1
+          fi
+          git clone "https://x-access-token:${GH_TOKEN}@github.com/thabti/homebrew-tap.git" /tmp/tap
+          cd /tmp/tap
+          mkdir -p Casks
+          sed -e "s|{{VERSION}}|${VERSION}|g" \
+              -e "s|{{SHA256_ARM}}|${SHA256}|g" \
+              "${{ github.workspace }}/.github/homebrew/Casks/silt.rb.template" > Casks/silt.rb
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.name "github-actions[bot]"
+          git add Casks/silt.rb
+          git diff --cached --quiet || (git commit -m "Update silt to ${VERSION}" && git push)

@@ -1,0 +1,27 @@
+cask "silt" do
+  version "{{VERSION}}"
+  sha256 "{{SHA256_ARM}}"
+
+  url "https://github.com/thabti/silt/releases/download/v{{VERSION}}/Silt-{{VERSION}}.dmg"
+  name "Silt"
+  desc "Safe, fast macOS disk cleaner for developers"
+  homepage "https://github.com/thabti/silt"
+
+  depends_on arch: :arm64
+  depends_on macos: ">= :sonoma"
+
+  app "Silt.app"
+
+  uninstall quit: "com.sabeur.silt"
+
+  zap trash: [
+    "~/Library/Caches/com.sabeur.silt",
+    "~/Library/Preferences/com.sabeur.silt.plist",
+    "~/Library/Saved Application State/com.sabeur.silt.savedState",
+  ]
+
+  caveats <<~EOS
+    Silt is signed but not notarized yet. On first launch, right-click
+    Silt.app and choose Open.
+  EOS
+end
