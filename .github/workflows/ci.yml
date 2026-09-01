@@ -1,0 +1,29 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    name: Build & test
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate project
+        run: xcodegen generate
+
+      - name: Build (unsigned)
+        run: |
+          xcodebuild -project Silt.xcodeproj -scheme Silt -configuration Release \
+                     -derivedDataPath build build
+
+      - name: Test
+        run: |
+          xcodebuild -project Silt.xcodeproj -scheme SiltTests -configuration Debug \
+                     -derivedDataPath build test

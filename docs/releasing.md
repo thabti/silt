@@ -134,6 +134,39 @@ spctl --assess -vv --type open --context context:primary-signature dist/Silt-*.d
 - **Stapler error 65** — the submission was not `Accepted`, or you stapled the app instead of
   the dmg the ticket was issued for.
 
+## CI (GitHub Actions)
+
+Two workflows in `.github/workflows/`:
+
+- **`ci.yml`** — every push and PR: XcodeGen, unsigned Release build, full test suite on a
+  macOS 15 runner. No secrets involved.
+- **`release.yml`** — on a `v*` tag (or manual dispatch): imports the signing certificate
+  into a throwaway keychain, runs `make dmg`, notarizes **if** notary secrets are present,
+  uploads the dmg as an artifact, and attaches it to the GitHub release for the tag.
+
+Cutting a release is:
+
+```bash
+git tag v1.0 && git push origin v1.0
+```
+
+### Repository secrets
+
+| Secret | Contents | Status |
+|---|---|---|
+| `APPLE_CERTIFICATE` | base64 of the Developer ID `.p12` (cert + private key) | set |
+| `APPLE_CERTIFICATE_PASSWORD` | password protecting that `.p12` | set |
+| `APPLE_TEAM_ID` | `N762FB52VL` | set |
+| `APPLE_ID` | Apple ID email for notarization | **not set — add to enable CI notarization** |
+| `APPLE_APP_PASSWORD` | app-specific password for that Apple ID | **not set** |
+
+Until the last two exist, CI produces a signed-but-unnotarized dmg (fine for testing; shows
+the Gatekeeper warning on other Macs).
+
+The local `secrets/` folder holds the raw `.key`/`.cer`/`.p12` and the p12 password. It is
+git-ignored — nothing in it may ever be committed. To rotate: replace the files, rebuild the
+p12, and re-run `gh secret set`.
+
 ## What is deliberately not automated
 
 - **Credentials never live in the repo.** The Makefile references a keychain profile by name;
