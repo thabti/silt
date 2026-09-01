@@ -32,7 +32,7 @@ struct FilesView: View {
 
     private var header: some View {
         HStack(alignment: .center, spacing: 16) {
-            IconTile(symbol: "doc.text.magnifyingglass", tint: Theme.accent, size: 36)
+            IconTile(symbol: "doc.text.magnifyingglass", tint: Theme.accent, size: 48)
 
             VStack(alignment: .leading, spacing: 4) {
                 Text("Large files")
@@ -277,7 +277,7 @@ struct FileRow: View {
             Button(action: onToggle) { CheckDot(isOn: isSelected) }
                 .buttonStyle(.plain)
 
-            IconTile(symbol: entry.kind.symbol, tint: entry.kind.tint, size: 28)
+            IconTile(symbol: entry.kind.symbol, tint: entry.kind.tint, size: 36)
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 8) {

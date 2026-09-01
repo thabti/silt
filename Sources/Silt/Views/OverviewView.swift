@@ -152,7 +152,7 @@ struct CategoryDetailView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
             HStack(alignment: .center, spacing: 16) {
-                IconTile(symbol: category.symbol, tint: Theme.tint(for: category), size: 36)
+                IconTile(symbol: category.symbol, tint: Theme.tint(for: category), size: 48)
                 VStack(alignment: .leading, spacing: 4) {
                     Text(category.title)
                         .font(Theme.heading(20, weight: .bold))

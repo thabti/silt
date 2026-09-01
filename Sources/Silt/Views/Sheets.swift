@@ -31,7 +31,7 @@ struct ConfirmSheet: View {
                         HStack(spacing: 12) {
                             IconTile(symbol: bucket.target.category.symbol,
                                      tint: Theme.tint(for: bucket.target.category),
-                                     size: 24)
+                                     size: 30)
                             VStack(alignment: .leading, spacing: 1) {
                                 Text(bucket.target.name)
                                     .font(Theme.heading(14, weight: .semibold))

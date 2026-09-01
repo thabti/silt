@@ -38,7 +38,7 @@ struct CategoryCard: View {
         Button(action: action) {
             VStack(alignment: .leading, spacing: 12) {
                 HStack(spacing: 10) {
-                    IconTile(symbol: category.symbol, tint: Theme.tint(for: category), size: 30)
+                    IconTile(symbol: category.symbol, tint: Theme.tint(for: category), size: 40)
                     VStack(alignment: .leading, spacing: 1) {
                         Text(category.title)
                             .font(Theme.heading(14))
@@ -116,7 +116,7 @@ struct BucketRow: View {
                     .padding(.top, 8)
             }
 
-            IconTile(symbol: target.category.symbol, tint: Theme.tint(for: target.category), size: 28)
+            IconTile(symbol: target.category.symbol, tint: Theme.tint(for: target.category), size: 36)
                 .padding(.top, 2)
 
             VStack(alignment: .leading, spacing: 3) {

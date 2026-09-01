@@ -111,7 +111,7 @@ extension View {
 struct IconTile: View {
     let symbol: String
     let tint: Color
-    var size: CGFloat = 26
+    var size: CGFloat = 34
 
     var body: some View {
         RoundedRectangle(cornerRadius: size * 0.23, style: .continuous)
