@@ -165,7 +165,20 @@ the Gatekeeper warning on other Macs).
 
 The local `secrets/` folder holds the raw `.key`/`.cer`/`.p12` and the p12 password. It is
 git-ignored — nothing in it may ever be committed. To rotate: replace the files, rebuild the
-p12, and re-run `gh secret set`.
+p12, and re-run `gh secret set`:
+
+```bash
+cd secrets
+openssl x509 -inform der -in developer-id.cer -out /tmp/dev-id.pem
+openssl pkcs12 -export -legacy -inkey developer-id.key -in /tmp/dev-id.pem \
+  -name "Developer ID Application: Sabeur Thabti (N762FB52VL)" \
+  -out developer-id.p12 -passout pass:"$(cat developer-id.p12.password)"
+base64 -i developer-id.p12 | gh secret set APPLE_CERTIFICATE --repo thabti/silt
+```
+
+The `-legacy` flag is load-bearing: OpenSSL 3 defaults to AES-based PKCS#12 that macOS
+`security import` cannot read — the runner fails with the misleading
+`MAC verification failed during PKCS12 import (wrong password?)`.
 
 ## What is deliberately not automated
 
