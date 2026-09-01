@@ -1,0 +1,190 @@
+import XCTest
+
+final class SafetyGuardTests: XCTestCase {
+
+    private let home = FileManager.default.homeDirectoryForCurrentUser
+
+    private func url(_ relative: String) -> URL {
+        home.appendingPathComponent(relative)
+    }
+
+    // MARK: - Things that must never be deletable
+
+    func testBlocksHomeItself() {
+        XCTAssertFalse(SafetyGuard.verdict(for: home).isAllowed)
+    }
+
+    func testBlocksTopLevelFolders() {
+        for name in ["Library", "Documents", "Desktop", "Downloads", ".cache", ".npm"] {
+            XCTAssertFalse(SafetyGuard.verdict(for: url(name)).isAllowed, "\(name) must not be deletable")
+        }
+    }
+
+    func testBlocksPersonalData() {
+        let cases = [
+            "Documents/taxes/2025.pdf",
+            "Desktop/screenshot.png",
+            "Downloads/installer.dmg",
+            "Pictures/Photos Library.photoslibrary",
+            "Movies/wedding.mov",
+            "Music/library.musiclibrary",
+            ".ssh/id_ed25519",
+            ".gnupg/pubring.kbx",
+            ".aws/credentials",
+            ".config/gh/hosts.yml",
+            "Library/Keychains/login.keychain-db",
+            "Library/Mobile Documents/com~apple~CloudDocs/notes.txt",
+            "Library/Containers/com.docker.docker/Data/vms",
+            "Library/Application Support/MobileSync/Backup/abc",
+            "Library/pnpm/store/v3",
+            "go/pkg/mod/github.com",
+            "Library/Developer/Xcode/Archives/2026-01-01",
+            "Library/Developer/CoreSimulator/Devices/ABC",
+        ]
+        for path in cases {
+            XCTAssertFalse(SafetyGuard.verdict(for: url(path)).isAllowed, "\(path) must be protected")
+        }
+    }
+
+    func testBlocksOutsideHome() {
+        for path in ["/", "/System/Library", "/usr/bin", "/Applications/Safari.app", "/opt/homebrew/Cellar", "/etc/passwd"] {
+            XCTAssertFalse(SafetyGuard.verdict(for: URL(fileURLWithPath: path)).isAllowed, "\(path) must be blocked")
+        }
+    }
+
+    func testBlocksPathTraversal() {
+        let sneaky = url("Library/Caches/../../Documents/secret.txt")
+        XCTAssertFalse(SafetyGuard.verdict(for: sneaky).isAllowed)
+    }
+
+    // MARK: - Things that should be deletable
+
+    func testAllowsCacheContents() {
+        let cases = [
+            "Library/Caches/Google/Chrome/Default/Cache",
+            "Library/Caches/pip/wheels",
+            "Library/Logs/DiagnosticReports/report.crash",
+            "Library/Developer/Xcode/DerivedData/MyApp-abc123",
+            ".cache/uv/wheels",
+            ".npm/_cacache/index-v5",
+            ".gradle/caches/modules-2",
+            ".Trash/old-file.zip",
+        ]
+        for path in cases {
+            XCTAssertTrue(SafetyGuard.verdict(for: url(path)).isAllowed, "\(path) should be cleanable")
+        }
+    }
+
+    func testBucketRootRuleAllowsTrashButNotHome() {
+        XCTAssertTrue(SafetyGuard.verdictForBucketRoot(url(".Trash")).isAllowed)
+        XCTAssertFalse(SafetyGuard.verdictForBucketRoot(home).isAllowed)
+        XCTAssertFalse(SafetyGuard.verdictForBucketRoot(url("Documents")).isAllowed)
+    }
+
+    // MARK: - Catalog integrity
+
+    func testEveryDeletableCatalogEntryPassesTheGuard() {
+        for target in Catalog.all where target.kind.isDeletable {
+            XCTAssertTrue(
+                SafetyGuard.verdictForBucketRoot(target.path).isAllowed,
+                "\(target.id) at \(target.path.path) is marked deletable but the guard rejects it"
+            )
+        }
+    }
+
+    func testDeletableCatalogChildrenPassTheGuard() {
+        // A bucket is cleaned by removing its direct children, so a representative
+        // child of every deletable bucket has to survive the full rule set.
+        for target in Catalog.all where target.kind.isDeletable {
+            let child = target.path.appendingPathComponent("sample-item")
+            XCTAssertTrue(
+                SafetyGuard.verdict(for: child).isAllowed,
+                "\(target.id): child \(child.path) would be blocked, so this bucket could never be cleaned"
+            )
+        }
+    }
+
+    func testReviewEntriesAreNeverDeletable() {
+        for target in Catalog.all where target.category == .review {
+            XCTAssertEqual(target.kind, .review, "\(target.id) is in Review but not marked review-only")
+            XCTAssertFalse(target.kind.isDeletable)
+        }
+    }
+
+    func testCatalogIDsAreUnique() {
+        let ids = Catalog.all.map(\.id)
+        XCTAssertEqual(ids.count, Set(ids).count, "duplicate catalog ids")
+    }
+
+    // MARK: - Hand-picked files (Files list)
+
+    func testUserFileRulesAllowYourOwnBigFiles() {
+        let cases = [
+            "Downloads/ubuntu.iso",
+            "Documents/wedding-master.mov",
+            "Movies/export.mp4",
+            "Desktop/archive.zip",
+            "Library/Caches/some-tool/blob.bin",
+        ]
+        for path in cases {
+            XCTAssertTrue(
+                SafetyGuard.verdictForUserFile(url(path), isBundle: false).isAllowed,
+                "\(path) should be trashable from the Files list"
+            )
+        }
+    }
+
+    func testUserFileRulesBlockCredentialsAndCloud() {
+        let cases = [
+            "Library/Keychains/login.keychain-db",
+            "Library/Preferences/com.apple.finder.plist",
+            "Library/Mobile Documents/com~apple~CloudDocs/report.pdf",
+            "Library/CloudStorage/GoogleDrive/file.pdf",
+            ".ssh/id_ed25519",
+            ".gnupg/pubring.kbx",
+            ".aws/credentials",
+            ".config/gh/hosts.yml",
+            ".kube/config",
+        ]
+        for path in cases {
+            XCTAssertFalse(
+                SafetyGuard.verdictForUserFile(url(path), isBundle: false).isAllowed,
+                "\(path) must never be trashable from the Files list"
+            )
+        }
+    }
+
+    func testUserFileRulesBlockMediaLibrariesAndOutsideHome() {
+        XCTAssertFalse(SafetyGuard.verdictForUserFile(url("Pictures/Photos Library.photoslibrary"), isBundle: true).isAllowed)
+        XCTAssertFalse(SafetyGuard.verdictForUserFile(url("Music/Music Library.musiclibrary"), isBundle: true).isAllowed)
+        XCTAssertFalse(SafetyGuard.verdictForUserFile(URL(fileURLWithPath: "/etc/passwd"), isBundle: false).isAllowed)
+        XCTAssertFalse(SafetyGuard.verdictForUserFile(URL(fileURLWithPath: "/Applications/Safari.app"), isBundle: true).isAllowed)
+    }
+
+    func testUserFileRulesRefusePlainFolders() {
+        // Documents exists, is a directory, and is not a package.
+        XCTAssertFalse(SafetyGuard.verdictForUserFile(url("Documents"), isBundle: false).isAllowed)
+    }
+
+    // MARK: - File classification
+
+    func testFileKindClassification() {
+        func kind(_ name: String, package: Bool = false, exec: Bool = false) -> FileKind {
+            FileKind.classify(URL(fileURLWithPath: "/tmp/\(name)"), isPackage: package, isExecutable: exec)
+        }
+        XCTAssertEqual(kind("clip.mov"), .video)
+        XCTAssertEqual(kind("song.flac"), .audio)
+        XCTAssertEqual(kind("shot.heic"), .image)
+        XCTAssertEqual(kind("bundle.zip"), .archive)
+        XCTAssertEqual(kind("Ventura.dmg"), .diskImage)
+        XCTAssertEqual(kind("libfoo.dylib"), .binary)
+        XCTAssertEqual(kind("Xcode.app", package: true), .appPackage)
+        XCTAssertEqual(kind("Photos Library.photoslibrary", package: true), .appPackage)
+        XCTAssertEqual(kind("model.safetensors"), .appPackage)
+        XCTAssertEqual(kind("data.sqlite"), .data)
+        XCTAssertEqual(kind("notes.pdf"), .document)
+        // No extension but the executable bit set — treated as a binary.
+        XCTAssertEqual(kind("some-tool", exec: true), .binary)
+        XCTAssertEqual(kind("mystery.qqq"), .other)
+    }
+}
