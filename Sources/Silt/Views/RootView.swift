@@ -58,6 +58,21 @@ struct RootView: View {
     /// Actions live in the toolbar, where Mac apps keep them — not in a floating bar.
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
+        // The scan control sits on the leading side, apart from the destructive actions.
+        ToolbarItem(placement: .navigation) {
+            Button {
+                model.isScanning ? model.cancelScan() : model.scan()
+            } label: {
+                if model.isScanning {
+                    Label("Stop", systemImage: "stop.fill")
+                } else {
+                    Label("Rescan", systemImage: "arrow.clockwise")
+                }
+            }
+            .disabled(model.phase == .cleaning)
+            .help(scanHelp)
+        }
+
         ToolbarItemGroup(placement: .primaryAction) {
             Menu {
                 Picker("Appearance", selection: $appearanceRaw) {
@@ -153,6 +168,16 @@ struct RootView: View {
         }
     }
 
+    private var scanHelp: String {
+        if model.isScanning {
+            return "Stop — measuring \(model.scanProgress.completed) of \(model.scanProgress.total)"
+        }
+        if let last = model.lastScan {
+            return "Rescan (last scanned \(last.formatted(date: .omitted, time: .shortened)))"
+        }
+        return "Scan"
+    }
+
     private var scopeCaption: String {
         if let category = model.scopeCategory {
             return "\(model.scopedBuckets.count) of \(model.scopedCleanableCount) in \(category.title) selected"
@@ -202,38 +227,6 @@ struct RootView: View {
             }
             .listStyle(.sidebar)
             .environment(\.sidebarRowSize, .large)
-
-            Divider()
-
-            VStack(alignment: .leading, spacing: 8) {
-                if model.isScanning {
-                    VStack(alignment: .leading, spacing: 5) {
-                        ProgressView(value: model.scanProgress.fraction)
-                            .progressViewStyle(.linear)
-                        Text("Measuring \(model.scanProgress.completed) of \(model.scanProgress.total)")
-                            .font(Theme.figure(12, weight: .regular))
-                            .foregroundStyle(.secondary)
-                    }
-                } else if let last = model.lastScan {
-                    Text("Scanned \(last.formatted(date: .omitted, time: .shortened))")
-                        .font(Theme.heading(12, weight: .regular))
-                        .foregroundStyle(.tertiary)
-                }
-
-                Button {
-                    model.isScanning ? model.cancelScan() : model.scan()
-                } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: model.isScanning ? "stop.fill" : "arrow.clockwise")
-                        Text(model.isScanning ? "Stop" : "Rescan")
-                    }
-                    .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.large)
-                .disabled(model.phase == .cleaning)
-            }
-            .padding(12)
         }
         .navigationTitle("Silt")
     }
