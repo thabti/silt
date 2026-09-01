@@ -37,6 +37,18 @@ enum ArtifactScanner {
         }
     }
 
+    /// Re-walk only project directories affected by a trash operation.
+    static func scan(projectDirectories: [URL]) async -> [ProjectArtifact] {
+        await withTaskGroup(of: [ProjectArtifact].self) { group in
+            for directory in Set(projectDirectories.map(\.standardizedFileURL)) {
+                group.addTask { walk(directory, onProgress: { _, _, _ in }, onFound: { _ in }) }
+            }
+            var results: [ProjectArtifact] = []
+            for await batch in group { results.append(contentsOf: batch) }
+            return results.sorted { $0.bytes > $1.bytes }
+        }
+    }
+
     private static func walk(
         _ root: URL,
         onProgress: @escaping @Sendable (Int, Int, String) -> Void,

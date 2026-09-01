@@ -199,16 +199,30 @@ final class SafetyGuardTests: XCTestCase {
         }
     }
 
-    func testArtifactRulesBlockProtectedPaths() throws {
+    func testArtifactRulesAllowDocumentsWorkArea() throws {
         let fakeHome = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
             .appendingPathComponent(".silt-artifact-test-\(UUID().uuidString)")
-        let project = fakeHome.appendingPathComponent("Documents/example")
+        let project = fakeHome.appendingPathComponent("Documents/work/example")
         try FileManager.default.createDirectory(at: project, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: fakeHome) }
         FileManager.default.createFile(atPath: project.appendingPathComponent("package.json").path, contents: Data())
         let artifact = project.appendingPathComponent("node_modules")
         try FileManager.default.createDirectory(at: artifact, withIntermediateDirectories: false)
-        XCTAssertFalse(SafetyGuard.verdictForProjectArtifact(artifact, homeDirectory: fakeHome).isAllowed)
+        XCTAssertTrue(SafetyGuard.verdictForProjectArtifact(artifact, homeDirectory: fakeHome).isAllowed)
+    }
+
+    func testArtifactRulesBlockSensitivePaths() throws {
+        for protectedRoot in ["Library/Keychains/projects", ".ssh/projects"] {
+            let fakeHome = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+                .appendingPathComponent(".silt-artifact-test-\(UUID().uuidString)")
+            let project = fakeHome.appendingPathComponent(protectedRoot).appendingPathComponent("example")
+            try FileManager.default.createDirectory(at: project, withIntermediateDirectories: true)
+            defer { try? FileManager.default.removeItem(at: fakeHome) }
+            FileManager.default.createFile(atPath: project.appendingPathComponent("package.json").path, contents: Data())
+            let artifact = project.appendingPathComponent("node_modules")
+            try FileManager.default.createDirectory(at: artifact, withIntermediateDirectories: false)
+            XCTAssertFalse(SafetyGuard.verdictForProjectArtifact(artifact, homeDirectory: fakeHome).isAllowed)
+        }
     }
 
     func testArtifactRulesBlockSymlinks() throws {

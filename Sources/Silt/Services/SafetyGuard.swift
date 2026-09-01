@@ -72,6 +72,12 @@ enum SafetyGuard {
         ".android/avd", ".password-store", ".local/share/keyrings",
     ]
 
+    /// Artifact discovery intentionally searches normal work areas. Its marker, shape,
+    /// containment, depth, and symlink checks remain independent deletion gates.
+    private static let artifactProtectedRelativePaths = protectedRelativePaths.filter {
+        !["Documents", "Desktop", "Downloads"].contains($0)
+    }
+
     private static let protectedPaths: [String] = protectedRelativePaths.map {
         home.appendingPathComponent($0).standardizedFileURL.path
     }
@@ -168,7 +174,7 @@ enum SafetyGuard {
     /// Callers may only move an allowed directory to the Trash.
     static func verdictForProjectArtifact(_ url: URL, homeDirectory: URL = home) -> Verdict {
         let artifactHome = homeDirectory.standardizedFileURL
-        let artifactProtectedPaths = protectedRelativePaths.map {
+        let artifactProtectedPaths = artifactProtectedRelativePaths.map {
             artifactHome.appendingPathComponent($0).standardizedFileURL.path
         }
         let standardized = url.standardizedFileURL

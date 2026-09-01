@@ -572,6 +572,7 @@ final class AppModel: ObservableObject {
     @Published var artifactSelection: Set<String> = []
     @Published var artifactProgress = ArtifactScanProgress(visited: 0, found: 0, currentFolder: "")
     @Published var artifactNotice: String?
+    @Published private(set) var lastArtifactScan: Date?
     private var artifactTask: Task<Void, Never>?
 
     var selectedArtifacts: [ProjectArtifact] { artifacts.filter { artifactSelection.contains($0.id) } }
@@ -604,8 +605,14 @@ final class AppModel: ObservableObject {
                 self?.artifacts = found
                 self?.artifactSelection.formIntersection(Set(found.map(\.id)))
                 self?.artifactsPhase = .ready
+                self?.lastArtifactScan = Date()
             }
         }
+    }
+
+    func scanArtifactsIfNeeded() {
+        guard artifactsPhase == .idle, lastArtifactScan == nil else { return }
+        scanArtifacts()
     }
 
     private func mergeArtifact(_ artifact: ProjectArtifact) {
@@ -625,6 +632,7 @@ final class AppModel: ObservableObject {
         var removed = 0
         var freed: Int64 = 0
         var refused: [String] = []
+        var affectedProjects: Set<URL> = []
         for artifact in chosen {
             let verdict = SafetyGuard.verdictForProjectArtifact(artifact.url)
             guard verdict.isAllowed else {
@@ -633,13 +641,32 @@ final class AppModel: ObservableObject {
             do {
                 try FileManager.default.trashItem(at: artifact.url, resultingItemURL: nil)
                 removed += 1; freed += artifact.bytes
+                affectedProjects.insert(artifact.projectPath.standardizedFileURL)
             } catch { refused.append("\(artifact.projectName): \(error.localizedDescription)") }
         }
         let fm = FileManager.default
         artifacts.removeAll { !fm.fileExists(atPath: $0.url.path) }
-        artifactSelection.removeAll()
+        artifactSelection.formIntersection(Set(artifacts.map(\.id)))
         disk = DiskSpace.snapshot()
         artifactNotice = "Moved \(removed) \(removed == 1 ? "artifact" : "artifacts") to the Trash — \(freed.byteLabel)." +
             (refused.isEmpty ? "" : " \(refused.count) left alone: \(refused.prefix(2).joined(separator: "; "))")
+        refreshArtifacts(in: Array(affectedProjects))
+    }
+
+    private func refreshArtifacts(in projectDirectories: [URL]) {
+        guard !projectDirectories.isEmpty else { return }
+        artifactTask?.cancel()
+        let scopes = Set(projectDirectories.map(\.standardizedFileURL))
+        artifactTask = Task { [weak self] in
+            let refreshed = await ArtifactScanner.scan(projectDirectories: Array(scopes))
+            guard !Task.isCancelled else { return }
+            await MainActor.run {
+                guard let self else { return }
+                self.artifacts.removeAll { scopes.contains($0.projectPath.standardizedFileURL) }
+                for artifact in refreshed { self.mergeArtifact(artifact) }
+                self.artifactSelection.formIntersection(Set(self.artifacts.map(\.id)))
+                self.lastArtifactScan = Date()
+            }
+        }
     }
 }

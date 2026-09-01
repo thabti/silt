@@ -26,8 +26,15 @@ struct ArtifactsView: View {
                 Text("Build artifacts").font(Theme.heading(20, weight: .bold))
                 Text("Dependency and build folders across your home. They regenerate on the next install or build.")
                     .font(Theme.heading(14)).foregroundStyle(.secondary)
+                if let scanned = model.lastArtifactScan {
+                    Text("Scanned \(scanned.formatted(date: .omitted, time: .shortened))")
+                        .font(Theme.heading(12)).foregroundStyle(.tertiary)
+                }
             }
             Spacer()
+            if model.artifactsPhase == .ready {
+                Button("Rescan") { model.scanArtifacts() }.buttonStyle(.bordered)
+            }
             if model.artifactsPhase == .ready, !model.artifacts.isEmpty {
                 VStack(alignment: .trailing, spacing: 2) {
                     Text(model.totalArtifactBytes.byteLabel).font(Theme.figure(20))

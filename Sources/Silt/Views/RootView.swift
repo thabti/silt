@@ -28,11 +28,13 @@ struct RootView: View {
         .preferredColorScheme(appearance.colorScheme)
         .onAppear {
             if model.phase == .idle { model.scan() }
+            if model.route == .artifacts { model.scanArtifactsIfNeeded() }
         }
         .onChange(of: model.route) { _, route in
             // Measuring the review folders is a minute of disk work, so it waits until
             // you actually open the page that shows them.
             if route == .category(.review) { model.measureReview() }
+            if route == .artifacts { model.scanArtifactsIfNeeded() }
         }
     }
 
