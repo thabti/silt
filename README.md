@@ -141,25 +141,43 @@ swift Icon/generate-appicon.swift Icon/appicon-source.png /tmp/out
 # then copy /tmp/out/icon_*.png into Sources/Silt/Assets.xcassets/AppIcon.appiconset
 ```
 
-## Build and run
+## Running it locally
+
+Requirements: macOS 14+, Xcode command-line tools, and [XcodeGen](https://github.com/yonaskolb/XcodeGen)
+(the `.xcodeproj` is generated from `project.yml` and git-ignored — edit `project.yml`, never
+the project file).
 
 ```bash
+git clone git@github.com:thabti/silt.git
+cd silt
 brew install xcodegen          # once
 xcodegen generate              # writes Silt.xcodeproj
-open Silt.xcodeproj        # or:
+
+# fastest path: build and launch from the terminal
 xcodebuild -project Silt.xcodeproj -scheme Silt -configuration Release \
            -derivedDataPath build build
 open build/Build/Products/Release/Silt.app
+
+# or work in Xcode
+open Silt.xcodeproj            # scheme "Silt", ⌘R
 ```
+
+The app builds unsigned for local use (`CODE_SIGN_IDENTITY: "-"` in `project.yml`), so there is
+nothing to configure — no team, no provisioning. First launch asks for no permissions; granting
+**Full Disk Access** (System Settings › Privacy & Security) additionally lets it read Safari's
+cache and app containers, which are otherwise shown as *Partly locked*.
 
 Run the tests:
 
 ```bash
-xcodebuild -project Silt.xcodeproj -scheme SiltTests test
-```
+xcodebuild -project Silt.xcodeproj -scheme SiltTests -configuration Debug \
+           -derivedDataPath build test
 
-The Xcode project is generated from `project.yml` and is git-ignored — edit `project.yml`, not
-the `.xcodeproj`.
+# one test only
+xcodebuild -project Silt.xcodeproj -scheme SiltTests -configuration Debug \
+           -derivedDataPath build test \
+           -only-testing:SiltTests/SafetyGuardTests/testBlocksPersonalData
+```
 
 ## Permissions
 
