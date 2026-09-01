@@ -56,7 +56,7 @@ Performance invariants worth preserving (each was measured; numbers in README):
 - During any rescan, existing results stay on screen — `scan()` must never blank `scanned`
   (that bug made the sidebar vanish mid-scan).
 - `Cleaner` removes a bucket's *children* and leaves the bucket folder itself in place.
-- Hand-picked files (`trashSelectedFiles`) go to the Trash only, never `removeItem`.
+- Hand-picked files run through `requestCleanFiles` → confirmation sheet → `confirmCleanFiles`, honoring the Trash/Delete mode; artifacts remain Trash-only.
 
 ## Design language
 

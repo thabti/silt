@@ -35,7 +35,10 @@ independently. For each, the consequence line carries the correct native command
 Hand-picked files go through `verdictForUserFile` — looser (you may throw away your own big
 files anywhere in your home folder) but still refusing credentials, keychains, preferences,
 cloud placeholders, plain folders, and media libraries (`.photoslibrary`, `.musiclibrary`, …).
-And they are **Trash-only**: the permanent-delete mode does not exist on that page.
+The page honors the same Trash/Delete mode as the cache pages, and **every job goes through a
+confirmation sheet** that lists each file and its path; permanent deletion carries an extra
+warning that these are your own files, not regenerable caches. Build artifacts remain
+Trash-only — they regenerate anyway, so permanence buys nothing.
 
 ## Habits that back the gates
 

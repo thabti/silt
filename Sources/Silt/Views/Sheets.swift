@@ -177,3 +177,93 @@ struct ReportSheet: View {
         } + report.blocked
     }
 }
+
+
+/// Confirmation for a hand-picked file job. Same contract as ConfirmSheet: what is listed
+/// is exactly what runs, in the mode shown.
+struct FilesConfirmSheet: View {
+    @ObservedObject var model: AppModel
+
+    private var isPermanent: Bool { model.mode == .permanent }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text(isPermanent
+                     ? "Delete \(model.pendingFileBytes.byteLabel)?"
+                     : "Move \(model.pendingFileBytes.byteLabel) to the Trash?")
+                    .font(Theme.heading(18, weight: .bold))
+                HStack(spacing: 8) {
+                    Pill(text: "Large files", color: Theme.accent)
+                    Text("\(model.pendingFiles.count) \(model.pendingFiles.count == 1 ? "item" : "items")")
+                        .font(Theme.heading(13, weight: .medium))
+                        .foregroundStyle(.secondary)
+                }
+                Text(model.mode.explanation)
+                    .font(Theme.heading(14))
+                    .foregroundStyle(.secondary)
+            }
+
+            ScrollView {
+                VStack(spacing: 8) {
+                    ForEach(model.pendingFiles) { entry in
+                        HStack(spacing: 12) {
+                            IconTile(symbol: entry.kind.symbol, tint: entry.kind.tint, size: 30)
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(entry.name)
+                                    .font(Theme.heading(14, weight: .semibold))
+                                    .lineLimit(1)
+                                    .truncationMode(.middle)
+                                Text(entry.displayPath)
+                                    .font(.system(size: 11, design: .monospaced))
+                                    .foregroundStyle(.tertiary)
+                                    .lineLimit(1)
+                                    .truncationMode(.middle)
+                            }
+                            Spacer()
+                            Text(entry.bytes.byteLabel)
+                                .font(Theme.figure(15, weight: .semibold))
+                        }
+                        .padding(.vertical, 6)
+                        .padding(.horizontal, 10)
+                        .accessibilityElement(children: .combine)
+                    }
+                }
+            }
+            .frame(maxHeight: 240)
+            .background(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(Color.primary.opacity(0.04))
+            )
+
+            if isPermanent {
+                HStack(spacing: 10) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(Theme.danger)
+                    Text("Deleting now cannot be undone. These are your own files, not regenerable caches.")
+                        .font(Theme.heading(13, weight: .medium))
+                    Spacer()
+                }
+                .padding(12)
+                .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Theme.danger.opacity(0.10)))
+            }
+
+            HStack(spacing: 12) {
+                Spacer()
+                Button("Cancel") {
+                    model.showFilesConfirmation = false
+                    model.pendingFiles = []
+                }
+                .controlSize(.large)
+                .keyboardShortcut(.cancelAction)
+                Button(isPermanent ? "Delete" : "Move to Trash") { model.confirmCleanFiles() }
+                    .controlSize(.large)
+                    .buttonStyle(.borderedProminent)
+                    .tint(isPermanent ? Theme.danger : Theme.accent)
+                    .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(26)
+        .frame(width: 560)
+    }
+}

@@ -551,15 +551,32 @@ final class AppModel: ObservableObject {
         }
     }
 
-    /// Hand-picked files only ever go to the Trash, never straight to deletion.
-    func trashSelectedFiles() {
-        let chosen = selectedFiles
+    /// The exact file job the confirmation sheet is about — captured at request time,
+    /// like `pending` for cache buckets.
+    @Published var pendingFiles: [FileEntry] = []
+    @Published var showFilesConfirmation = false
+
+    var pendingFileBytes: Int64 { pendingFiles.reduce(0) { $0 + $1.bytes } }
+
+    func requestCleanFiles() {
+        guard !selectedFiles.isEmpty else { return }
+        pendingFiles = selectedFiles
+        showFilesConfirmation = true
+    }
+
+    /// Runs the captured file job in the current mode. Every path is re-checked by the
+    /// guard immediately before removal, whichever mode is active.
+    func confirmCleanFiles() {
+        let chosen = pendingFiles
+        pendingFiles = []
+        showFilesConfirmation = false
         guard !chosen.isEmpty else { return }
 
         var removed = 0
         var freed: Int64 = 0
         var refused: [String] = []
 
+        let permanent = mode == .permanent
         for entry in chosen {
             let verdict = SafetyGuard.verdictForUserFile(entry.url, isBundle: entry.isBundle)
             guard verdict.isAllowed else {
@@ -567,7 +584,11 @@ final class AppModel: ObservableObject {
                 continue
             }
             do {
-                try FileManager.default.trashItem(at: entry.url, resultingItemURL: nil)
+                if permanent {
+                    try FileManager.default.removeItem(at: entry.url)
+                } else {
+                    try FileManager.default.trashItem(at: entry.url, resultingItemURL: nil)
+                }
                 removed += 1
                 freed += entry.bytes
             } catch {
@@ -580,7 +601,9 @@ final class AppModel: ObservableObject {
         fileSelection = []
         disk = DiskSpace.snapshot()
 
-        var notice = "Moved \(removed) \(removed == 1 ? "item" : "items") to the Trash — \(freed.byteLabel)."
+        var notice = permanent
+            ? "Deleted \(removed) \(removed == 1 ? "item" : "items") — \(freed.byteLabel)."
+            : "Moved \(removed) \(removed == 1 ? "item" : "items") to the Trash — \(freed.byteLabel)."
         if !refused.isEmpty {
             notice += " \(refused.count) left alone: \(refused.prefix(2).joined(separator: "; "))"
         }

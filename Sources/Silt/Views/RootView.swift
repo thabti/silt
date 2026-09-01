@@ -19,6 +19,9 @@ struct RootView: View {
         .sheet(isPresented: $model.showConfirmation) {
             ConfirmSheet(model: model)
         }
+        .sheet(isPresented: $model.showFilesConfirmation) {
+            FilesConfirmSheet(model: model)
+        }
         .alert("Turn off personal-folder protection?", isPresented: $showDisableProtectionConfirmation) {
             Button("Cancel", role: .cancel) {}
             Button("Turn Off Protection", role: .destructive) {
@@ -86,20 +89,38 @@ struct RootView: View {
             .help(protectedLocations ? "Settings" : "Personal-folder protection is off")
             .accessibilityLabel(protectedLocations ? "Settings" : "Settings, personal-folder protection is off")
 
-            // Hand-picked pages: Trash-only, so a single action and no mode picker.
+            // Large files: same mode + Clean pair as the cache pages. Permanent deletion
+            // of hand-picked files exists by explicit request; the confirmation sheet is
+            // what stands between the click and the disk.
             if model.route == .files, model.filesPhase == .ready, !model.files.isEmpty {
+                Menu {
+                    Section("After cleaning") {
+                        Picker("After cleaning", selection: $model.mode) {
+                            ForEach(DeletionMode.allCases) { mode in
+                                Text(mode.title).tag(mode)
+                            }
+                        }
+                        .pickerStyle(.inline)
+                    }
+                } label: {
+                    Label(model.mode.title, systemImage: model.mode == .trash ? "trash" : "trash.slash")
+                }
+                .help(model.mode.explanation)
+                .accessibilityLabel("After cleaning: \(model.mode.title)")
+
                 Button {
-                    model.trashSelectedFiles()
+                    model.requestCleanFiles()
                 } label: {
                     Label(
-                        model.selectedFileBytes > 0 ? "Move to Trash \(model.selectedFileBytes.byteLabel)" : "Move to Trash",
+                        model.selectedFileBytes > 0 ? "Clean \(model.selectedFileBytes.byteLabel)" : "Clean",
                         systemImage: "trash"
                     )
                     .labelStyle(.titleAndIcon)
                 }
                 .disabled(model.selectedFiles.isEmpty)
                 .keyboardShortcut(.return, modifiers: .command)
-                .help("Hand-picked files always go to the Trash, never straight to deletion")
+                .tint(model.mode == .permanent ? Theme.danger : nil)
+                .help("\(model.selectedFiles.count) selected · \(model.mode.explanation)")
             }
 
             if model.route == .artifacts, model.artifactsPhase == .ready, !model.artifacts.isEmpty {
