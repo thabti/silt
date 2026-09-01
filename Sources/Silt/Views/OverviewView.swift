@@ -9,6 +9,38 @@ struct OverviewView: View {
 
     private let columns = [GridItem(.adaptive(minimum: 280), spacing: 18)]
 
+    @ViewBuilder
+    private var trashCard: some View {
+        if let trash = model.trashBucket {
+            HStack(spacing: 14) {
+                IconTile(symbol: "trash", tint: Theme.danger, size: 44)
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Trash")
+                        .font(Theme.heading(15, weight: .bold))
+                    if trash.isEmpty {
+                        Text("Trash is empty")
+                            .font(Theme.heading(13))
+                            .foregroundStyle(.secondary)
+                    } else {
+                        Text("\(trash.bytes.byteLabel) · \(trash.fileCount.formatted()) \(trash.fileCount == 1 ? "item" : "items")")
+                            .font(Theme.figure(13, weight: .medium))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                Spacer()
+
+                Button("Empty Trash…") { model.requestEmptyTrash() }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
+                    .tint(Theme.danger)
+                    .disabled(trash.isEmpty || model.phase == .cleaning)
+            }
+            .card(radius: 18, padding: 16)
+        }
+    }
+
     /// Review sizes are expensive, so the card reflects whether they have been paid for yet.
     @ViewBuilder
     private var reviewCard: some View {
@@ -60,6 +92,8 @@ struct OverviewView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 22) {
             DiskHeroView(model: model, animate: true)
+
+            trashCard
 
             HStack(spacing: 10) {
                 Text("What to clear")

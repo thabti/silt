@@ -7,7 +7,10 @@ struct ConfirmSheet: View {
 
     private var buckets: [ScannedTarget] { model.pending }
     private var includesTrash: Bool { buckets.contains { $0.target.id == Catalog.trashID } }
-    private var isPermanent: Bool { model.mode == .permanent }
+    /// The Trash bucket is always erased permanently, but a mixed job only reads as
+    /// "Delete" when everything in it actually is permanent.
+    private var trashOnly: Bool { !buckets.isEmpty && buckets.allSatisfy { $0.target.id == Catalog.trashID } }
+    private var isPermanent: Bool { trashOnly || model.mode == .permanent }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
@@ -20,7 +23,7 @@ struct ConfirmSheet: View {
                         .font(Theme.heading(13, weight: .medium))
                         .foregroundStyle(.secondary)
                 }
-                Text(model.mode.explanation)
+                Text(trashOnly ? "Not recoverable. Emptying the Trash frees the space immediately." : model.mode.explanation)
                     .font(Theme.heading(14))
                     .foregroundStyle(.secondary)
             }
@@ -60,9 +63,11 @@ struct ConfirmSheet: View {
                 HStack(spacing: 10) {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .foregroundStyle(Theme.danger)
-                    Text(includesTrash
-                         ? "Emptying the Trash cannot be undone, whichever option you pick."
-                         : "Deleting now cannot be undone.")
+                    Text(trashOnly
+                         ? "Emptying the Trash cannot be undone."
+                         : includesTrash
+                            ? "Emptying the Trash cannot be undone, whichever option you pick."
+                            : "Deleting now cannot be undone.")
                         .font(Theme.heading(13, weight: .medium))
                     Spacer()
                 }

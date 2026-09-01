@@ -15,6 +15,7 @@ struct ScanIndex {
     var categoriesWithContent: [CleanCategory] = []
     var junkBytes: Int64 = 0
     var reviewBytes: Int64 = 0
+    var trash: ScannedTarget?
 
     static func build(from scanned: [ScannedTarget]) -> ScanIndex {
         var index = ScanIndex()
@@ -29,6 +30,7 @@ struct ScanIndex {
         index.reviewOnly = scanned.filter { !$0.target.kind.isDeletable && $0.bytes > 0 }
         index.junkBytes = index.cleanable.reduce(0) { $0 + $1.bytes }
         index.reviewBytes = index.reviewOnly.reduce(0) { $0 + $1.bytes }
+        index.trash = scanned.first { $0.id == Catalog.trashID }
         return index
     }
 }
@@ -156,6 +158,11 @@ final class AppModel: ObservableObject {
     var bytesSelectedOutsideScope: Int64 { selectedBytes - scopedBytes }
 
     var pendingBytes: Int64 { pending.reduce(0) { $0 + $1.bytes } }
+
+    /// Trash stays visible on the overview even when its measured size is zero.
+    var trashBucket: ScannedTarget? {
+        index.trash
+    }
 
     /// True only on a cold start, when there is genuinely nothing to show yet.
     var hasResults: Bool { !scanned.isEmpty }
@@ -362,6 +369,14 @@ final class AppModel: ObservableObject {
         }
         guard !buckets.isEmpty else { return }
         pending = buckets
+        showConfirmation = true
+    }
+
+    /// Starts the normal confirmation flow with Trash as the entire job.
+    func requestEmptyTrash() {
+        guard let trashBucket, !trashBucket.isEmpty else { return }
+        pending = [trashBucket]
+        pendingScope = "Trash"
         showConfirmation = true
     }
 
