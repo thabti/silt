@@ -8,5 +8,6 @@
 | [performance.md](performance.md) | The measurements behind the 96 s → 1 s scan, and the invariants that keep it fast |
 | [design.md](design.md) | The visual language: what System Settings taught us, and what got removed as AI slop |
 | [development.md](development.md) | Building, testing, adding catalog entries, regenerating the icon and these docs |
+| [releasing.md](releasing.md) | Signing, notarizing and shipping a dmg — `make release` end to end |
 
 ![Silt overview, dark](images/overview-dark.png)

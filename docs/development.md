@@ -48,7 +48,8 @@ xcrun notarytool store-credentials silt-notary \
 ```
 
 Until notarized, `spctl` reports the dmg as "Unnotarized Developer ID" — signed correctly,
-just not yet cleared by Apple. That is expected.
+just not yet cleared by Apple. That is expected. The full pipeline, stage by stage, with
+verification and troubleshooting: [releasing.md](releasing.md).
 
 Builds are unsigned (`CODE_SIGN_IDENTITY: "-"`) — nothing to configure. The app is
 deliberately **not sandboxed**: a sandboxed process cannot read other apps' cache folders.
