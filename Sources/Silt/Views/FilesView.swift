@@ -20,7 +20,6 @@ struct FilesView: View {
                 } else {
                     breakdown
                     chips
-                    if !model.selectedFiles.isEmpty { selectionBar }
                     if let notice = model.fileNotice { noticeRow(notice) }
                     list
                 }
@@ -49,7 +48,9 @@ struct FilesView: View {
                 if model.filesPhase == .ready, !model.files.isEmpty {
                     Text(model.listedFileBytes.byteLabel)
                         .font(Theme.figure(20))
-                    Text("\(model.filteredFiles.count) items listed")
+                    Text(model.selectedFiles.isEmpty
+                         ? "\(model.filteredFiles.count) items listed"
+                         : "\(model.selectedFiles.count) of \(model.filteredFiles.count) selected")
                         .font(Theme.heading(12))
                         .foregroundStyle(.secondary)
                 }
@@ -198,38 +199,6 @@ struct FilesView: View {
         .buttonStyle(.plain)
     }
 
-    // MARK: Selection
-
-    private var selectionBar: some View {
-        HStack(spacing: 14) {
-            VStack(alignment: .leading, spacing: 1) {
-                Text(model.selectedFileBytes.byteLabel)
-                    .font(Theme.figure(15))
-                Text("\(model.selectedFiles.count) selected")
-                    .font(Theme.heading(12))
-                    .foregroundStyle(.secondary)
-            }
-            Spacer()
-            Text("Hand-picked files always go to the Trash, never straight to deletion.")
-                .font(Theme.heading(12))
-                .foregroundStyle(.tertiary)
-            Button("Deselect") { model.fileSelection.removeAll() }
-                .controlSize(.large)
-            Button {
-                model.trashSelectedFiles()
-            } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "trash")
-                    Text("Move to Trash")
-                        .font(Theme.heading(14, weight: .semibold))
-                }
-            }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.large)
-            .tint(Theme.accent)
-        }
-        .card(radius: 16, padding: 14)
-    }
 
     private func noticeRow(_ text: String) -> some View {
         HStack(spacing: 10) {

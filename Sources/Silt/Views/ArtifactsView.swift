@@ -12,7 +12,6 @@ struct ArtifactsView: View {
             case .ready:
                 if model.artifacts.isEmpty { emptyCard }
                 else {
-                    if !model.selectedArtifacts.isEmpty { selectionBar }
                     if let notice = model.artifactNotice { noticeRow(notice) }
                     artifactList
                 }
@@ -32,7 +31,10 @@ struct ArtifactsView: View {
             if model.artifactsPhase == .ready, !model.artifacts.isEmpty {
                 VStack(alignment: .trailing, spacing: 2) {
                     Text(model.totalArtifactBytes.byteLabel).font(Theme.figure(20))
-                    Text("\(model.artifacts.count) folders").font(Theme.heading(12)).foregroundStyle(.secondary)
+                    Text(model.selectedArtifacts.isEmpty
+                         ? "\(model.artifacts.count) folders"
+                         : "\(model.selectedArtifacts.count) of \(model.artifacts.count) selected")
+                        .font(Theme.heading(12)).foregroundStyle(.secondary)
                 }
             }
         }.card(padding: 22)
@@ -67,18 +69,6 @@ struct ArtifactsView: View {
         }.frame(maxWidth: .infinity).card(padding: 30)
     }
 
-    private var selectionBar: some View {
-        HStack(spacing: 14) {
-            VStack(alignment: .leading, spacing: 1) {
-                Text(model.selectedArtifactBytes.byteLabel).font(Theme.figure(15))
-                Text("\(model.selectedArtifacts.count) selected").font(Theme.heading(12)).foregroundStyle(.secondary)
-            }
-            Spacer()
-            Button("Deselect") { model.artifactSelection.removeAll() }.controlSize(.large)
-            Button { model.trashSelectedArtifacts() } label: { Label("Move to Trash", systemImage: "trash") }
-                .buttonStyle(.borderedProminent).controlSize(.large).tint(Theme.accent)
-        }.card(radius: 16, padding: 14)
-    }
 
     private func noticeRow(_ text: String) -> some View {
         HStack(spacing: 10) {

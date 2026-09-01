@@ -54,6 +54,37 @@ struct RootView: View {
             }
             .help("Appearance")
 
+            // Hand-picked pages: Trash-only, so a single action and no mode picker.
+            if model.route == .files, model.filesPhase == .ready, !model.files.isEmpty {
+                Button {
+                    model.trashSelectedFiles()
+                } label: {
+                    Label(
+                        model.selectedFileBytes > 0 ? "Move to Trash \(model.selectedFileBytes.byteLabel)" : "Move to Trash",
+                        systemImage: "trash"
+                    )
+                    .labelStyle(.titleAndIcon)
+                }
+                .disabled(model.selectedFiles.isEmpty)
+                .keyboardShortcut(.return, modifiers: .command)
+                .help("Hand-picked files always go to the Trash, never straight to deletion")
+            }
+
+            if model.route == .artifacts, model.artifactsPhase == .ready, !model.artifacts.isEmpty {
+                Button {
+                    model.trashSelectedArtifacts()
+                } label: {
+                    Label(
+                        model.selectedArtifactBytes > 0 ? "Move to Trash \(model.selectedArtifactBytes.byteLabel)" : "Move to Trash",
+                        systemImage: "trash"
+                    )
+                    .labelStyle(.titleAndIcon)
+                }
+                .disabled(model.selectedArtifacts.isEmpty)
+                .keyboardShortcut(.return, modifiers: .command)
+                .help("Artifacts always go to the Trash — they regenerate on the next install or build")
+            }
+
             if model.route != .files, model.route != .artifacts, model.phase == .ready, model.scopedCleanableCount > 0 {
                 Picker("After cleaning", selection: $model.mode) {
                     ForEach(DeletionMode.allCases) { mode in
