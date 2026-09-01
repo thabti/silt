@@ -32,11 +32,11 @@ struct FilesView: View {
 
     private var header: some View {
         HStack(alignment: .center, spacing: 16) {
-            IconTile(symbol: "doc.text.magnifyingglass", gradient: Theme.accentGradient, size: 56)
+            IconTile(symbol: "doc.text.magnifyingglass", tint: Theme.accent, size: 36)
 
             VStack(alignment: .leading, spacing: 4) {
                 Text("Large files")
-                    .font(Theme.heading(32, weight: .bold))
+                    .font(Theme.heading(20, weight: .bold))
                 Text("Everything in your home folder, biggest first. Bundles like apps and photo libraries count as one item.")
                     .font(Theme.heading(14))
                     .foregroundStyle(.secondary)
@@ -48,7 +48,7 @@ struct FilesView: View {
             VStack(alignment: .trailing, spacing: 8) {
                 if model.filesPhase == .ready, !model.files.isEmpty {
                     Text(model.listedFileBytes.byteLabel)
-                        .font(Theme.figure(34))
+                        .font(Theme.figure(20))
                     Text("\(model.filteredFiles.count) items listed")
                         .font(Theme.heading(12))
                         .foregroundStyle(.secondary)
@@ -130,7 +130,7 @@ struct FilesView: View {
                 HStack(spacing: 2) {
                     ForEach(model.fileKindTotals) { total in
                         Rectangle()
-                            .fill(total.kind.gradient)
+                            .fill(total.kind.tint)
                             .frame(width: max(2, geo.size.width * fraction(of: total.bytes)))
                     }
                 }
@@ -204,7 +204,7 @@ struct FilesView: View {
         HStack(spacing: 14) {
             VStack(alignment: .leading, spacing: 1) {
                 Text(model.selectedFileBytes.byteLabel)
-                    .font(Theme.figure(20))
+                    .font(Theme.figure(15))
                 Text("\(model.selectedFiles.count) selected")
                     .font(Theme.heading(12))
                     .foregroundStyle(.secondary)
@@ -277,12 +277,12 @@ struct FileRow: View {
             Button(action: onToggle) { CheckDot(isOn: isSelected) }
                 .buttonStyle(.plain)
 
-            IconTile(symbol: entry.kind.symbol, gradient: entry.kind.gradient, size: 40)
+            IconTile(symbol: entry.kind.symbol, tint: entry.kind.tint, size: 28)
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 8) {
                     Text(entry.name)
-                        .font(Theme.heading(16, weight: .semibold))
+                        .font(Theme.heading(13))
                         .lineLimit(1)
                         .truncationMode(.middle)
                     if entry.isBundle {
@@ -307,7 +307,7 @@ struct FileRow: View {
 
             VStack(alignment: .trailing, spacing: 3) {
                 Text(entry.bytes.byteLabel)
-                    .font(Theme.figure(21))
+                    .font(Theme.figure(14))
                 Text(entry.modifiedLabel)
                     .font(Theme.heading(11.5))
                     .foregroundStyle(.tertiary)

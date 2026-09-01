@@ -63,14 +63,14 @@ struct OverviewView: View {
 
             HStack(spacing: 10) {
                 Text("What to clear")
-                    .font(Theme.heading(22, weight: .bold))
+                    .font(Theme.heading(15, weight: .bold))
                 Spacer()
                 Button("Recommended") { model.selectRecommended() }
                 Button("Select all") { model.selectEverythingCleanable() }
                 Button("None") { model.selection.removeAll() }
             }
             .buttonStyle(.bordered)
-            .controlSize(.large)
+            .controlSize(.small)
 
             LazyVGrid(columns: columns, spacing: 18) {
                 ForEach(model.categoriesWithContent) { category in
@@ -152,10 +152,10 @@ struct CategoryDetailView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
             HStack(alignment: .center, spacing: 16) {
-                IconTile(symbol: category.symbol, gradient: Theme.gradient(for: category), size: 56)
+                IconTile(symbol: category.symbol, tint: Theme.tint(for: category), size: 36)
                 VStack(alignment: .leading, spacing: 4) {
                     Text(category.title)
-                        .font(Theme.heading(32, weight: .bold))
+                        .font(Theme.heading(20, weight: .bold))
                     Text(category.blurb)
                         .font(Theme.heading(14))
                         .foregroundStyle(.secondary)
@@ -163,7 +163,7 @@ struct CategoryDetailView: View {
                 Spacer()
                 VStack(alignment: .trailing, spacing: 2) {
                     Text(model.bytes(in: category).byteLabel)
-                        .font(Theme.figure(34))
+                        .font(Theme.figure(20))
                     Text("in \(buckets.count) locations")
                         .font(Theme.heading(12))
                         .foregroundStyle(.secondary)
@@ -196,7 +196,7 @@ struct CategoryDetailView: View {
                     VStack(alignment: .leading, spacing: 0) {
                         HStack(spacing: 8) {
                             Text(group.name.uppercased())
-                                .font(.system(size: 11, weight: .bold, design: .rounded))
+                                .font(.system(size: 11, weight: .semibold))
                                 .tracking(0.8)
                                 .foregroundStyle(.secondary)
                             Rectangle()

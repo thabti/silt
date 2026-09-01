@@ -13,7 +13,7 @@ struct ConfirmSheet: View {
         VStack(alignment: .leading, spacing: 20) {
             VStack(alignment: .leading, spacing: 6) {
                 Text(isPermanent ? "Delete \(model.pendingBytes.byteLabel)?" : "Move \(model.pendingBytes.byteLabel) to the Trash?")
-                    .font(Theme.heading(28, weight: .bold))
+                    .font(Theme.heading(18, weight: .bold))
                 HStack(spacing: 8) {
                     Pill(text: model.pendingScope, color: Theme.accent)
                     Text("\(buckets.count) \(buckets.count == 1 ? "location" : "locations")")
@@ -30,8 +30,8 @@ struct ConfirmSheet: View {
                     ForEach(buckets) { bucket in
                         HStack(spacing: 12) {
                             IconTile(symbol: bucket.target.category.symbol,
-                                     gradient: Theme.gradient(for: bucket.target.category),
-                                     size: 30)
+                                     tint: Theme.tint(for: bucket.target.category),
+                                     size: 24)
                             VStack(alignment: .leading, spacing: 1) {
                                 Text(bucket.target.name)
                                     .font(Theme.heading(14, weight: .semibold))
@@ -96,12 +96,13 @@ struct ReportSheet: View {
 
     var body: some View {
         VStack(spacing: 20) {
-            IconTile(symbol: "sparkles", gradient: Theme.accentGradient, size: 64)
+            Image(systemName: "checkmark.circle")
+                .font(.system(size: 40, weight: .light))
+                .foregroundStyle(Theme.good)
 
             VStack(spacing: 6) {
                 Text(report.bytesFreed.byteLabel)
-                    .font(Theme.figure(56))
-                    .foregroundStyle(Theme.accentGradient)
+                    .font(Theme.figure(34, weight: .bold))
                 Text(model.mode == .trash && !report.outcomes.isEmpty
                      ? "moved to the Trash"
                      : "freed")

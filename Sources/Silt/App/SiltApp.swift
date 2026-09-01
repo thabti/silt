@@ -7,10 +7,10 @@ struct SiltApp: App {
     var body: some Scene {
         WindowGroup {
             RootView(model: model)
-                .frame(minWidth: 940, minHeight: 660)
+                .frame(minWidth: 880, minHeight: 620)
         }
         .defaultSize(width: 1120, height: 780)
-        .windowToolbarStyle(.unified(showsTitle: false))
+        .windowToolbarStyle(.unified)
         .commands {
             CommandGroup(after: .newItem) {
                 Button("Rescan") { model.scan() }

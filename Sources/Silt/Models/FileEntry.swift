@@ -50,25 +50,21 @@ enum FileKind: String, CaseIterable, Identifiable, Hashable {
         }
     }
 
+    /// System palette only, so every kind adapts to light and dark for free.
     var tint: Color {
         switch self {
-        case .video:      Color(red: 0.98, green: 0.44, blue: 0.62)
-        case .audio:      Color(red: 0.96, green: 0.62, blue: 0.24)
-        case .image:      Color(red: 0.36, green: 0.76, blue: 0.94)
-        case .archive:    Color(red: 0.55, green: 0.52, blue: 0.98)
-        case .diskImage:  Color(red: 0.42, green: 0.44, blue: 0.99)
-        case .binary:     Color(red: 0.13, green: 0.76, blue: 0.62)
-        case .appPackage: Color(red: 0.30, green: 0.62, blue: 0.98)
-        case .code:       Color(red: 0.72, green: 0.50, blue: 0.98)
-        case .document:   Color(red: 0.58, green: 0.63, blue: 0.72)
-        case .data:       Color(red: 0.85, green: 0.55, blue: 0.35)
-        case .other:      Color(red: 0.62, green: 0.64, blue: 0.70)
+        case .video:      Color(nsColor: .systemRed)
+        case .audio:      Color(nsColor: .systemOrange)
+        case .image:      Color(nsColor: .systemCyan)
+        case .archive:    Color(nsColor: .systemBrown)
+        case .diskImage:  Color(nsColor: .systemBlue)
+        case .binary:     Color(nsColor: .systemGreen)
+        case .appPackage: Color(nsColor: .systemTeal)
+        case .code:       Color(nsColor: .systemMint)
+        case .document:   Color(nsColor: .systemGray)
+        case .data:       Color(nsColor: .systemYellow)
+        case .other:      Color(nsColor: .systemGray)
         }
-    }
-
-    var gradient: LinearGradient {
-        LinearGradient(colors: [tint.opacity(0.95), tint.opacity(0.62)],
-                       startPoint: .topLeading, endPoint: .bottomTrailing)
     }
 
     // MARK: - Classification

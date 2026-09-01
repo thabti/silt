@@ -90,6 +90,15 @@ Two more habits that matter:
 catalog and asserts every deletable entry passes the guard — and that every Review entry does not
 — plus the Files-list rules and the binary/media classifier.
 
+## Design
+
+The visual reference is System Settings › Storage, not a landing page. Rules that came out of
+the de-slop pass: one accent — the teal of the app icon (`systemTeal`) — and system semantic
+colors for everything else; flat grouped-inset cards with a hairline edge, no shadows; small
+solid icon squares instead of gradient tiles; system typography with monospaced digits where
+numbers align; actions in the toolbar, where Mac apps keep them, instead of a floating bottom
+bar. Appearance (System / Light / Dark) is a toolbar menu, stored in `AppStorage`.
+
 ## Performance
 
 Measured on this Mac (376 GB used, 123 catalog entries, 35 present):

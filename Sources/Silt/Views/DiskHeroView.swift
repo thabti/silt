@@ -1,7 +1,8 @@
 import SwiftUI
 
-/// The headline: one ring, one very large number, and a segmented bar that reads
-/// the way the macOS storage bar does.
+/// The storage header, drawn the way System Settings draws it: volume name, a flat
+/// segmented capacity bar, and a legend with the numbers. The teal segment is what
+/// Silt can clear.
 struct DiskHeroView: View {
     @ObservedObject var model: AppModel
     var animate: Bool
@@ -11,113 +12,61 @@ struct DiskHeroView: View {
     private var otherUsedFraction: Double { max(0, usedFraction - junkFraction) }
 
     var body: some View {
-        HStack(alignment: .center, spacing: 34) {
-            ring
-            stats
-        }
-        .card(padding: 28)
-    }
-
-    // MARK: Ring
-
-    private var ring: some View {
-        ZStack {
-            Circle()
-                .stroke(Color.primary.opacity(0.07), lineWidth: 26)
-
-            // Everything already in use, minus the part we can reclaim.
-            Circle()
-                .trim(from: 0, to: otherUsedFraction)
-                .stroke(
-                    LinearGradient(colors: [Color.secondary.opacity(0.55), Color.secondary.opacity(0.30)],
-                                   startPoint: .top, endPoint: .bottom),
-                    style: StrokeStyle(lineWidth: 26, lineCap: .round)
-                )
-                .rotationEffect(.degrees(-90))
-
-            // The reclaimable slice, drawn on top in the accent colour.
-            Circle()
-                .trim(from: otherUsedFraction, to: usedFraction)
-                .stroke(Theme.accentGradient, style: StrokeStyle(lineWidth: 26, lineCap: .round))
-                .rotationEffect(.degrees(-90))
-                .shadow(color: Theme.accent.opacity(0.45), radius: 10)
-
-            VStack(spacing: 2) {
-                Text(model.junkBytes.byteLabel)
-                    .font(Theme.figure(42))
-                    .contentTransition(.numericText())
-                    .foregroundStyle(Theme.accentGradient)
-                Text("reclaimable")
-                    .font(Theme.heading(13, weight: .medium))
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .frame(width: 208, height: 208)
-        .animation(.smooth(duration: 0.7), value: usedFraction)
-        .animation(.smooth(duration: 0.7), value: junkFraction)
-    }
-
-    // MARK: Stats
-
-    private var stats: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .firstTextBaseline) {
                 Text(model.disk.volumeName)
-                    .font(Theme.heading(15, weight: .medium))
+                    .font(Theme.heading(15))
+                Spacer()
+                Text("\(model.disk.used.byteLabel) of \(model.disk.total.byteLabel) used")
+                    .font(Theme.figure(13, weight: .regular))
                     .foregroundStyle(.secondary)
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Text(model.disk.free.byteLabel)
-                        .font(Theme.figure(46))
-                        .contentTransition(.numericText())
-                    Text("free")
-                        .font(Theme.heading(19, weight: .medium))
-                        .foregroundStyle(.secondary)
-                }
-                Text("of \(model.disk.total.byteLabel)")
-                    .font(Theme.heading(14))
-                    .foregroundStyle(.tertiary)
             }
 
-            storageBar
+            bar
 
-            HStack(spacing: 20) {
-                legend(color: Color.secondary.opacity(0.5), title: "In use", value: (model.disk.used - model.junkBytes).byteLabel)
+            HStack(spacing: 18) {
+                legend(color: Color(nsColor: .systemGray), title: "In use",
+                       value: (model.disk.used - model.junkBytes).byteLabel)
                 legend(color: Theme.accent, title: "Reclaimable", value: model.junkBytes.byteLabel)
-                legend(color: Color.primary.opacity(0.10), title: "Free", value: model.disk.free.byteLabel)
+                legend(color: Theme.track, title: "Free", value: model.disk.free.byteLabel)
+                Spacer()
+                if model.junkBytes > 0 {
+                    Text("\(model.junkBytes.byteLabel) can be cleared")
+                        .font(Theme.figure(13))
+                        .foregroundStyle(Theme.accent)
+                }
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .card()
     }
 
-    private var storageBar: some View {
+    private var bar: some View {
         GeometryReader { geo in
             let width = geo.size.width
             HStack(spacing: 2) {
                 Rectangle()
-                    .fill(Color.secondary.opacity(0.45))
+                    .fill(Color(nsColor: .systemGray))
                     .frame(width: max(0, width * otherUsedFraction))
                 Rectangle()
-                    .fill(Theme.accentGradient)
+                    .fill(Theme.accent)
                     .frame(width: max(0, width * junkFraction))
                 Rectangle()
-                    .fill(Color.primary.opacity(0.08))
+                    .fill(Theme.track)
             }
-            .clipShape(Capsule())
+            .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
         }
-        .frame(height: 16)
-        .animation(.smooth(duration: 0.7), value: junkFraction)
+        .frame(height: 12)
+        .animation(.smooth(duration: 0.5), value: junkFraction)
     }
 
     private func legend(color: Color, title: String, value: String) -> some View {
-        HStack(spacing: 7) {
-            Circle().fill(color).frame(width: 9, height: 9)
-            VStack(alignment: .leading, spacing: 1) {
-                Text(title)
-                    .font(Theme.heading(12, weight: .medium))
-                    .foregroundStyle(.secondary)
-                Text(value)
-                    .font(Theme.figure(15, weight: .semibold))
-            }
+        HStack(spacing: 6) {
+            Circle().fill(color).frame(width: 8, height: 8)
+            Text(title)
+                .font(Theme.heading(12, weight: .regular))
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(Theme.figure(12))
         }
     }
 }
