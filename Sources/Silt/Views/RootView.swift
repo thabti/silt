@@ -3,6 +3,8 @@ import SwiftUI
 struct RootView: View {
     @ObservedObject var model: AppModel
     @AppStorage("appearance") private var appearanceRaw = Appearance.system.rawValue
+    @AppStorage("protectedLocations") private var protectedLocations = true
+    @State private var showDisableProtectionConfirmation = false
 
     private var appearance: Appearance { Appearance(rawValue: appearanceRaw) ?? .system }
 
@@ -17,6 +19,15 @@ struct RootView: View {
         .sheet(isPresented: $model.showConfirmation) {
             ConfirmSheet(model: model)
         }
+        .alert("Turn off personal-folder protection?", isPresented: $showDisableProtectionConfirmation) {
+            Button("Cancel", role: .cancel) {}
+            Button("Turn Off Protection", role: .destructive) {
+                protectedLocations = false
+            }
+            .tint(Theme.danger)
+        } message: {
+            Text("Silt will no longer refuse to list or trash items inside Documents, Desktop, Downloads, Photos, .ssh, and the rest of the protected-location list. Hand-picked files remain Trash-only, but caches may be deleted permanently.")
+        }
         .sheet(isPresented: Binding(
             get: { model.phase == .finished && model.report != nil },
             set: { if !$0 { model.dismissReport() } }
@@ -27,8 +38,12 @@ struct RootView: View {
         }
         .preferredColorScheme(appearance.colorScheme)
         .onAppear {
+            SafetyGuard.protectedLocationsEnabled = protectedLocations
             if model.phase == .idle { model.scan() }
             if model.route == .artifacts { model.scanArtifactsIfNeeded() }
+        }
+        .onChange(of: protectedLocations) { _, enabled in
+            SafetyGuard.protectedLocationsEnabled = enabled
         }
         .onChange(of: model.route) { _, route in
             // Measuring the review folders is a minute of disk work, so it waits until
@@ -51,10 +66,24 @@ struct RootView: View {
                     }
                 }
                 .pickerStyle(.inline)
+
+                Divider()
+
+                Toggle("Protect personal folders", isOn: Binding(
+                    get: { protectedLocations },
+                    set: { enabled in
+                        if enabled {
+                            protectedLocations = true
+                        } else {
+                            showDisableProtectionConfirmation = true
+                        }
+                    }
+                ))
             } label: {
-                Image(systemName: appearance.symbol)
+                Image(systemName: protectedLocations ? "gearshape" : "exclamationmark.triangle.fill")
+                    .foregroundStyle(protectedLocations ? Color.primary : Theme.danger)
             }
-            .help("Appearance")
+            .help(protectedLocations ? "Settings" : "Personal-folder protection is off")
 
             // Hand-picked pages: Trash-only, so a single action and no mode picker.
             if model.route == .files, model.filesPhase == .ready, !model.files.isEmpty {
@@ -233,7 +262,15 @@ struct RootView: View {
     // MARK: - Detail
 
     private var detail: some View {
-        content
+        VStack(spacing: 0) {
+            if !protectedLocations {
+                protectionWarning
+                    .padding(.horizontal, 24)
+                    .padding(.top, 16)
+            }
+
+            content
+        }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Theme.canvas)
             .overlay(alignment: .top) {
@@ -246,6 +283,30 @@ struct RootView: View {
                 }
             }
             .navigationTitle(model.route.title)
+    }
+
+    private var protectionWarning: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(Theme.danger)
+            Text("Personal-folder protection is off — Silt will not refuse Documents, Photos, .ssh, …")
+                .font(Theme.heading(12, weight: .medium))
+            Spacer(minLength: 12)
+            Button("Turn back on") {
+                protectedLocations = true
+            }
+            .buttonStyle(.bordered)
+            .tint(Theme.danger)
+        }
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(Theme.danger.opacity(0.12))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .stroke(Theme.danger.opacity(0.35), lineWidth: 1)
+        )
     }
 
     @ViewBuilder

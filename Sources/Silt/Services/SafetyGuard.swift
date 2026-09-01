@@ -45,6 +45,10 @@ enum ArtifactPattern: String, CaseIterable, Identifiable, Sendable {
 /// catalog entry, or a future bug in the UI, still cannot reach anything that matters.
 enum SafetyGuard {
 
+    /// User-facing escape hatch for the personal-folder denylist. All structural gates
+    /// remain active when this is disabled.
+    nonisolated(unsafe) static var protectedLocationsEnabled = true
+
     enum Verdict: Equatable {
         case allowed
         case blocked(String)
@@ -108,8 +112,10 @@ enum SafetyGuard {
         }
 
         // 3. Never inside a protected folder.
-        for guarded in protectedPaths where path == guarded || path.hasPrefix(guarded + "/") {
-            return .blocked("Protected location")
+        if protectedLocationsEnabled {
+            for guarded in protectedPaths where path == guarded || path.hasPrefix(guarded + "/") {
+                return .blocked("Protected location")
+            }
         }
 
         // 4. Never follow a link out of the allowed area — delete the link, not its target.
@@ -124,8 +130,10 @@ enum SafetyGuard {
             guard resolved.path.hasPrefix(home.path + "/") else {
                 return .blocked("Resolves outside your home folder")
             }
-            for guarded in protectedPaths where resolved.path == guarded || resolved.path.hasPrefix(guarded + "/") {
-                return .blocked("Resolves into a protected location")
+            if protectedLocationsEnabled {
+                for guarded in protectedPaths where resolved.path == guarded || resolved.path.hasPrefix(guarded + "/") {
+                    return .blocked("Resolves into a protected location")
+                }
             }
         }
 
@@ -154,8 +162,10 @@ enum SafetyGuard {
             return .blocked("Folders are not removed from this list")
         }
 
-        for guarded in fileProtectedPaths where path == guarded || path.hasPrefix(guarded + "/") {
-            return .blocked("Protected location")
+        if protectedLocationsEnabled {
+            for guarded in fileProtectedPaths where path == guarded || path.hasPrefix(guarded + "/") {
+                return .blocked("Protected location")
+            }
         }
 
         // A media library is somebody's entire photo or music history.
@@ -188,8 +198,10 @@ enum SafetyGuard {
         guard relative.split(separator: "/").count >= minimumDepth else {
             return .blocked("Too close to the top of your home folder")
         }
-        for guarded in artifactProtectedPaths where path == guarded || path.hasPrefix(guarded + "/") {
-            return .blocked("Protected location")
+        if protectedLocationsEnabled {
+            for guarded in artifactProtectedPaths where path == guarded || path.hasPrefix(guarded + "/") {
+                return .blocked("Protected location")
+            }
         }
 
         let values = try? standardized.resourceValues(forKeys: [.isSymbolicLinkKey, .isDirectoryKey])
@@ -223,8 +235,10 @@ enum SafetyGuard {
         }
         guard path != home.path else { return .blocked("Your home folder itself") }
 
-        for guarded in protectedPaths where path == guarded || path.hasPrefix(guarded + "/") {
-            return .blocked("Protected location")
+        if protectedLocationsEnabled {
+            for guarded in protectedPaths where path == guarded || path.hasPrefix(guarded + "/") {
+                return .blocked("Protected location")
+            }
         }
         return .allowed
     }
