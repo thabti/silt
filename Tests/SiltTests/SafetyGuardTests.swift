@@ -166,6 +166,62 @@ final class SafetyGuardTests: XCTestCase {
         XCTAssertFalse(SafetyGuard.verdictForUserFile(url("Documents"), isBundle: false).isAllowed)
     }
 
+    // MARK: - Project artifacts
+
+    private func withTemporaryHomeProject(_ body: (URL, URL) throws -> Void) throws {
+        let fakeHome = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+            .appendingPathComponent(".silt-artifact-test-\(UUID().uuidString)")
+        let project = fakeHome.appendingPathComponent("Projects/example")
+        try FileManager.default.createDirectory(at: project, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: fakeHome) }
+        try body(fakeHome, project)
+    }
+
+    func testArtifactRulesAllowMarkerValidatedNodeModules() throws {
+        try withTemporaryHomeProject { fakeHome, project in
+            FileManager.default.createFile(atPath: project.appendingPathComponent("package.json").path, contents: Data())
+            let artifact = project.appendingPathComponent("node_modules")
+            try FileManager.default.createDirectory(at: artifact, withIntermediateDirectories: false)
+            XCTAssertTrue(SafetyGuard.verdictForProjectArtifact(artifact, homeDirectory: fakeHome).isAllowed)
+        }
+    }
+
+    func testArtifactRulesRequireKnownNameAndMarker() throws {
+        try withTemporaryHomeProject { fakeHome, project in
+            let unmarked = project.appendingPathComponent("node_modules")
+            try FileManager.default.createDirectory(at: unmarked, withIntermediateDirectories: false)
+            XCTAssertFalse(SafetyGuard.verdictForProjectArtifact(unmarked, homeDirectory: fakeHome).isAllowed)
+
+            FileManager.default.createFile(atPath: project.appendingPathComponent("package.json").path, contents: Data())
+            let unknown = project.appendingPathComponent("dependencies")
+            try FileManager.default.createDirectory(at: unknown, withIntermediateDirectories: false)
+            XCTAssertFalse(SafetyGuard.verdictForProjectArtifact(unknown, homeDirectory: fakeHome).isAllowed)
+        }
+    }
+
+    func testArtifactRulesBlockProtectedPaths() throws {
+        let fakeHome = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+            .appendingPathComponent(".silt-artifact-test-\(UUID().uuidString)")
+        let project = fakeHome.appendingPathComponent("Documents/example")
+        try FileManager.default.createDirectory(at: project, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: fakeHome) }
+        FileManager.default.createFile(atPath: project.appendingPathComponent("package.json").path, contents: Data())
+        let artifact = project.appendingPathComponent("node_modules")
+        try FileManager.default.createDirectory(at: artifact, withIntermediateDirectories: false)
+        XCTAssertFalse(SafetyGuard.verdictForProjectArtifact(artifact, homeDirectory: fakeHome).isAllowed)
+    }
+
+    func testArtifactRulesBlockSymlinks() throws {
+        try withTemporaryHomeProject { fakeHome, project in
+            FileManager.default.createFile(atPath: project.appendingPathComponent("package.json").path, contents: Data())
+            let target = project.appendingPathComponent("real")
+            try FileManager.default.createDirectory(at: target, withIntermediateDirectories: false)
+            let link = project.appendingPathComponent("node_modules")
+            try FileManager.default.createSymbolicLink(at: link, withDestinationURL: target)
+            XCTAssertFalse(SafetyGuard.verdictForProjectArtifact(link, homeDirectory: fakeHome).isAllowed)
+        }
+    }
+
     // MARK: - File classification
 
     func testFileKindClassification() {

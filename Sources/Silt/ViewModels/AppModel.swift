@@ -50,12 +50,14 @@ final class AppModel: ObservableObject {
         case overview
         case category(CleanCategory)
         case files
+        case artifacts
 
         var id: String {
             switch self {
             case .overview: "overview"
             case .category(let c): c.rawValue
             case .files: "files"
+            case .artifacts: "artifacts"
             }
         }
 
@@ -64,6 +66,7 @@ final class AppModel: ObservableObject {
             case .overview: "Overview"
             case .category(let c): c.title
             case .files: "Large files"
+            case .artifacts: "Build artifacts"
             }
         }
     }
@@ -558,5 +561,85 @@ final class AppModel: ObservableObject {
             notice += " \(refused.count) left alone: \(refused.prefix(2).joined(separator: "; "))"
         }
         fileNotice = notice
+    }
+
+    // MARK: - Build artifacts
+
+    enum ArtifactsPhase: Equatable { case idle, scanning, ready }
+
+    @Published var artifactsPhase: ArtifactsPhase = .idle
+    @Published private(set) var artifacts: [ProjectArtifact] = []
+    @Published var artifactSelection: Set<String> = []
+    @Published var artifactProgress = ArtifactScanProgress(visited: 0, found: 0, currentFolder: "")
+    @Published var artifactNotice: String?
+    private var artifactTask: Task<Void, Never>?
+
+    var selectedArtifacts: [ProjectArtifact] { artifacts.filter { artifactSelection.contains($0.id) } }
+    var selectedArtifactBytes: Int64 { selectedArtifacts.reduce(0) { $0 + $1.bytes } }
+    var totalArtifactBytes: Int64 { artifacts.reduce(0) { $0 + $1.bytes } }
+
+    func toggle(_ artifact: ProjectArtifact) {
+        if artifactSelection.contains(artifact.id) { artifactSelection.remove(artifact.id) }
+        else { artifactSelection.insert(artifact.id) }
+    }
+
+    func scanArtifacts() {
+        artifactTask?.cancel()
+        artifactsPhase = .scanning
+        artifactNotice = nil
+        artifactProgress = ArtifactScanProgress(visited: 0, found: 0, currentFolder: "")
+
+        artifactTask = Task { [weak self] in
+            let found = await ArtifactScanner.scan { visited, discovered, folder in
+                Task { @MainActor [weak self] in
+                    self?.artifactProgress.visited += visited
+                    self?.artifactProgress.found += discovered
+                    if !folder.isEmpty { self?.artifactProgress.currentFolder = folder }
+                }
+            } onFound: { artifact in
+                Task { @MainActor [weak self] in self?.mergeArtifact(artifact) }
+            }
+            guard !Task.isCancelled else { return }
+            await MainActor.run {
+                self?.artifacts = found
+                self?.artifactSelection.formIntersection(Set(found.map(\.id)))
+                self?.artifactsPhase = .ready
+            }
+        }
+    }
+
+    private func mergeArtifact(_ artifact: ProjectArtifact) {
+        if let index = artifacts.firstIndex(where: { $0.id == artifact.id }) { artifacts[index] = artifact }
+        else { artifacts.append(artifact) }
+        artifacts.sort { $0.bytes > $1.bytes }
+    }
+
+    func cancelArtifactScan() {
+        artifactTask?.cancel(); artifactTask = nil
+        artifactsPhase = artifacts.isEmpty ? .idle : .ready
+    }
+
+    func trashSelectedArtifacts() {
+        let chosen = selectedArtifacts
+        guard !chosen.isEmpty else { return }
+        var removed = 0
+        var freed: Int64 = 0
+        var refused: [String] = []
+        for artifact in chosen {
+            let verdict = SafetyGuard.verdictForProjectArtifact(artifact.url)
+            guard verdict.isAllowed else {
+                refused.append("\(artifact.projectName): \(verdict.reason ?? "blocked")"); continue
+            }
+            do {
+                try FileManager.default.trashItem(at: artifact.url, resultingItemURL: nil)
+                removed += 1; freed += artifact.bytes
+            } catch { refused.append("\(artifact.projectName): \(error.localizedDescription)") }
+        }
+        let fm = FileManager.default
+        artifacts.removeAll { !fm.fileExists(atPath: $0.url.path) }
+        artifactSelection.removeAll()
+        disk = DiskSpace.snapshot()
+        artifactNotice = "Moved \(removed) \(removed == 1 ? "artifact" : "artifacts") to the Trash — \(freed.byteLabel)." +
+            (refused.isEmpty ? "" : " \(refused.count) left alone: \(refused.prefix(2).joined(separator: "; "))")
     }
 }

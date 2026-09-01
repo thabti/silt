@@ -54,7 +54,7 @@ struct RootView: View {
             }
             .help("Appearance")
 
-            if model.route != .files, model.phase == .ready, model.scopedCleanableCount > 0 {
+            if model.route != .files, model.route != .artifacts, model.phase == .ready, model.scopedCleanableCount > 0 {
                 Picker("After cleaning", selection: $model.mode) {
                     ForEach(DeletionMode.allCases) { mode in
                         Text(mode.title).tag(mode)
@@ -135,6 +135,7 @@ struct RootView: View {
 
                 Section("Storage") {
                     sidebarRow(route: .files, symbol: "doc.text.magnifyingglass", trailing: model.totalFileBytes)
+                    sidebarRow(route: .artifacts, symbol: "shippingbox", trailing: model.totalArtifactBytes)
                 }
             }
             .listStyle(.sidebar)
@@ -223,6 +224,13 @@ struct RootView: View {
                     .frame(maxWidth: 900, alignment: .leading)
                     .frame(maxWidth: .infinity)
             }
+        } else if model.route == .artifacts {
+            ScrollView {
+                ArtifactsView(model: model)
+                    .padding(24)
+                    .frame(maxWidth: 900, alignment: .leading)
+                    .frame(maxWidth: .infinity)
+            }
         } else if model.phase == .cleaning {
             StatusPanel(
                 symbol: "trash",
@@ -242,6 +250,8 @@ struct RootView: View {
                     case .category(let category):
                         CategoryDetailView(model: model, category: category)
                     case .files:
+                        EmptyView()
+                    case .artifacts:
                         EmptyView()
                     }
                 }

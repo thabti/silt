@@ -1,5 +1,43 @@
 import Foundation
 
+enum ArtifactPattern: String, CaseIterable, Identifiable, Sendable {
+    case nodeModules = "node_modules"
+    case dotVenv = ".venv"
+    case venv
+    case pods = "Pods"
+    case target
+    case vendor
+    case next = ".next"
+    case nuxt = ".nuxt"
+    case turbo = ".turbo"
+    case elmStuff = "elm-stuff"
+    case build = "_build"
+    case dartTool = ".dart_tool"
+
+    var id: String { rawValue }
+    var title: String { rawValue }
+
+    var markers: [String] {
+        switch self {
+        case .nodeModules, .next, .nuxt, .turbo: ["package.json"]
+        case .dotVenv, .venv: ["pyproject.toml", "requirements.txt", "setup.py"]
+        case .pods: ["Podfile"]
+        case .target: ["Cargo.toml"]
+        case .vendor: ["composer.json"]
+        case .elmStuff: ["elm.json"]
+        case .build: ["mix.exs"]
+        case .dartTool: ["pubspec.yaml"]
+        }
+    }
+
+    static func matching(_ url: URL, fileManager: FileManager = .default) -> ArtifactPattern? {
+        guard let pattern = Self(rawValue: url.lastPathComponent) else { return nil }
+        let project = url.deletingLastPathComponent()
+        return pattern.markers.contains { fileManager.fileExists(atPath: project.appendingPathComponent($0).path) }
+            ? pattern : nil
+    }
+}
+
 /// The last line of defence before anything is removed.
 ///
 /// Every single file or folder handed to `Cleaner` passes through `verdict(for:)`.
@@ -123,6 +161,40 @@ enum SafetyGuard {
             return .blocked("Media library — manage it in the app that owns it")
         }
 
+        return .allowed
+    }
+
+    /// Independent rules for marker-validated, regenerable project artifact directories.
+    /// Callers may only move an allowed directory to the Trash.
+    static func verdictForProjectArtifact(_ url: URL, homeDirectory: URL = home) -> Verdict {
+        let artifactHome = homeDirectory.standardizedFileURL
+        let artifactProtectedPaths = protectedRelativePaths.map {
+            artifactHome.appendingPathComponent($0).standardizedFileURL.path
+        }
+        let standardized = url.standardizedFileURL
+        let path = standardized.path
+
+        guard path.hasPrefix("/") else { return .blocked("Not an absolute path") }
+        guard !path.contains("..") else { return .blocked("Path escapes with ..") }
+        guard path.hasPrefix(artifactHome.path + "/") else { return .blocked("Outside your home folder") }
+
+        let relative = String(path.dropFirst(artifactHome.path.count + 1))
+        guard relative.split(separator: "/").count >= minimumDepth else {
+            return .blocked("Too close to the top of your home folder")
+        }
+        for guarded in artifactProtectedPaths where path == guarded || path.hasPrefix(guarded + "/") {
+            return .blocked("Protected location")
+        }
+
+        let values = try? standardized.resourceValues(forKeys: [.isSymbolicLinkKey, .isDirectoryKey])
+        if values?.isSymbolicLink == true { return .blocked("Symbolic link") }
+        guard values?.isDirectory == true else { return .blocked("Not a directory") }
+        guard ArtifactPattern.matching(standardized) != nil else {
+            return .blocked("Not a marker-validated project artifact")
+        }
+
+        let resolved = standardized.resolvingSymlinksInPath().standardizedFileURL
+        guard resolved.path == path else { return .blocked("Contains a symbolic link") }
         return .allowed
     }
 
