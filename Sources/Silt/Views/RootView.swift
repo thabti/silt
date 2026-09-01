@@ -11,7 +11,7 @@ struct RootView: View {
     var body: some View {
         NavigationSplitView {
             sidebar
-                .navigationSplitViewColumnWidth(min: 220, ideal: 236, max: 280)
+                .navigationSplitViewColumnWidth(min: 220, ideal: 260, max: 300)
         } detail: {
             detail
                 .toolbar { toolbarContent }
@@ -201,6 +201,7 @@ struct RootView: View {
                 }
             }
             .listStyle(.sidebar)
+            .environment(\.sidebarRowSize, .large)
 
             Divider()
 
@@ -210,12 +211,12 @@ struct RootView: View {
                         ProgressView(value: model.scanProgress.fraction)
                             .progressViewStyle(.linear)
                         Text("Measuring \(model.scanProgress.completed) of \(model.scanProgress.total)")
-                            .font(Theme.figure(11, weight: .regular))
+                            .font(Theme.figure(12, weight: .regular))
                             .foregroundStyle(.secondary)
                     }
                 } else if let last = model.lastScan {
                     Text("Scanned \(last.formatted(date: .omitted, time: .shortened))")
-                        .font(Theme.heading(11, weight: .regular))
+                        .font(Theme.heading(12, weight: .regular))
                         .foregroundStyle(.tertiary)
                 }
 
@@ -229,6 +230,7 @@ struct RootView: View {
                     .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.bordered)
+                .controlSize(.large)
                 .disabled(model.phase == .cleaning)
             }
             .padding(12)
@@ -238,16 +240,16 @@ struct RootView: View {
 
     private func sidebarRow(route: AppModel.Route, symbol: String, trailing: Int64) -> some View {
         HStack(spacing: 8) {
-            Image(systemName: symbol)
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(categoryOf(route).map(Theme.tint) ?? Theme.accent)
-                .frame(width: 20)
-            Text(route.title)
-                .font(Theme.heading(13, weight: .regular))
+            Label {
+                Text(route.title)
+            } icon: {
+                Image(systemName: symbol)
+                    .foregroundStyle(categoryOf(route).map(Theme.tint) ?? Theme.accent)
+            }
             Spacer()
             if trailing > 0 {
                 Text(trailing.byteLabel)
-                    .font(Theme.figure(11, weight: .regular))
+                    .font(Theme.figure(12, weight: .regular))
                     .foregroundStyle(.tertiary)
             }
         }
