@@ -14,6 +14,7 @@ jobs:
     env:
       KEYCHAIN: build.keychain
       KEYCHAIN_PASSWORD: ci-throwaway
+      HAS_NOTARY: ${{ secrets.APPLE_ID != '' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -46,7 +47,7 @@ jobs:
         run: make dmg TEAM_ID="$TEAM_ID"
 
       - name: Notarize and staple
-        if: ${{ secrets.APPLE_ID != '' }}
+        if: env.HAS_NOTARY == 'true'
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
