@@ -42,6 +42,9 @@ targets:
       - path: Tests/SiltTests
       - path: Sources/Silt/Models
       - path: Sources/Silt/Services/SafetyGuard.swift
+      - path: Sources/Silt/Services/InstalledApps.swift
+      - path: Sources/Silt/Services/LeftoverScanner.swift
+      - path: Sources/Silt/Services/Scanner.swift
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.sabeur.silt.tests

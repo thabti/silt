@@ -1,4 +1,5 @@
 import Foundation
+import AppKit
 
 enum ArtifactPattern: String, CaseIterable, Identifiable, Sendable {
     case nodeModules = "node_modules"
@@ -213,6 +214,34 @@ enum SafetyGuard {
 
         let resolved = standardized.resolvingSymlinksInPath().standardizedFileURL
         guard resolved.path == path else { return .blocked("Contains a symbolic link") }
+        return .allowed
+    }
+
+    static func verdictForAppLeftover(_ url: URL, matchedOrphanID: String, homeDirectory: URL = home,
+                                      verifyInstalled: Bool = true) -> Verdict {
+        let standardized = url.standardizedFileURL, leftoverHome = homeDirectory.standardizedFileURL
+        let id = matchedOrphanID.lowercased()
+        guard !id.hasPrefix("com.apple.") else { return .blocked("Apple system data") }
+        let roots = ["Application Support", "Caches", "Preferences", "Containers", "Group Containers",
+                     "Saved Application State", "HTTPStorages", "WebKit", "Logs", "LaunchAgents", "Application Scripts"]
+            .map { leftoverHome.appendingPathComponent("Library/\($0)").standardizedFileURL }
+        guard let root = roots.first(where: { standardized.deletingLastPathComponent() == $0 }) else {
+            return .blocked("Not directly inside an app-data location")
+        }
+        guard standardized.path.hasPrefix(leftoverHome.appendingPathComponent("Library").path + "/") else { return .blocked("Outside Library") }
+        let values = try? standardized.resourceValues(forKeys: [.isSymbolicLinkKey])
+        if values?.isSymbolicLink == true { return .blocked("Symbolic link") }
+        var name = standardized.lastPathComponent.lowercased()
+        if name.hasSuffix(".savedstate") { name.removeLast(11) }
+        if name.hasSuffix(".plist") { name.removeLast(6) }
+        if root.lastPathComponent == "Group Containers" {
+            let parts = name.split(separator: ".", maxSplits: 1).map(String.init)
+            if parts.count == 2, parts[0].count == 10, parts[0].allSatisfy({ $0.isLetter || $0.isNumber }) { name = parts[1] }
+        }
+        guard name == id || name.hasPrefix(id + ".") else { return .blocked("Name does not match the orphan app") }
+        if verifyInstalled, NSWorkspace.shared.urlForApplication(withBundleIdentifier: matchedOrphanID) != nil {
+            return .blocked("App is installed")
+        }
         return .allowed
     }
 

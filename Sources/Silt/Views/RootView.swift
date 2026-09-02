@@ -44,6 +44,7 @@ struct RootView: View {
             SafetyGuard.protectedLocationsEnabled = protectedLocations
             if model.phase == .idle { model.scan() }
             if model.route == .artifacts { model.scanArtifactsIfNeeded() }
+            if model.route == .leftovers { model.scanLeftoversIfNeeded() }
         }
         .onChange(of: protectedLocations) { _, enabled in
             SafetyGuard.protectedLocationsEnabled = enabled
@@ -53,6 +54,7 @@ struct RootView: View {
             // you actually open the page that shows them.
             if route == .category(.review) { model.measureReview() }
             if route == .artifacts { model.scanArtifactsIfNeeded() }
+            if route == .leftovers { model.scanLeftoversIfNeeded() }
         }
     }
 
@@ -138,7 +140,15 @@ struct RootView: View {
                 .help("Artifacts always go to the Trash — they regenerate on the next install or build")
             }
 
-            if model.route != .files, model.route != .artifacts, model.phase == .ready, model.scopedCleanableCount > 0 {
+            if model.route == .leftovers, model.leftoversPhase == .ready, !model.leftovers.isEmpty {
+                Button { model.trashSelectedLeftovers() } label: {
+                    Label(model.selectedLeftoverBytes > 0 ? "Move to Trash \(model.selectedLeftoverBytes.byteLabel)" : "Move to Trash", systemImage: "trash")
+                        .labelStyle(.titleAndIcon)
+                }.disabled(model.selectedLeftovers.isEmpty).keyboardShortcut(.return, modifiers: .command)
+                    .help("High-confidence leftovers always go to the Trash")
+            }
+
+            if model.route != .files, model.route != .artifacts, model.route != .leftovers, model.phase == .ready, model.scopedCleanableCount > 0 {
                 Menu {
                     Section("After cleaning") {
                         Picker("After cleaning", selection: $model.mode) {
@@ -236,6 +246,7 @@ struct RootView: View {
                 Section("Storage") {
                     sidebarRow(route: .files, symbol: "doc.text.magnifyingglass", trailing: model.totalFileBytes)
                     sidebarRow(route: .artifacts, symbol: "shippingbox", trailing: model.totalArtifactBytes)
+                    sidebarRow(route: .leftovers, symbol: "app.dashed", trailing: model.totalLeftoverBytes)
                 }
             }
             .listStyle(.sidebar)
@@ -337,6 +348,10 @@ struct RootView: View {
                     .frame(maxWidth: 900, alignment: .leading)
                     .frame(maxWidth: .infinity)
             }
+        } else if model.route == .leftovers {
+            ScrollView {
+                LeftoversView(model: model).padding(24).frame(maxWidth: 900, alignment: .leading).frame(maxWidth: .infinity)
+            }
         } else if model.phase == .cleaning {
             StatusPanel(
                 symbol: "trash",
@@ -358,6 +373,8 @@ struct RootView: View {
                     case .files:
                         EmptyView()
                     case .artifacts:
+                        EmptyView()
+                    case .leftovers:
                         EmptyView()
                     }
                 }

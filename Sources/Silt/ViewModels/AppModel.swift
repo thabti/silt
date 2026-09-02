@@ -51,6 +51,7 @@ final class AppModel: ObservableObject {
         case category(CleanCategory)
         case files
         case artifacts
+        case leftovers
 
         var id: String {
             switch self {
@@ -58,6 +59,7 @@ final class AppModel: ObservableObject {
             case .category(let c): c.rawValue
             case .files: "files"
             case .artifacts: "artifacts"
+            case .leftovers: "leftovers"
             }
         }
 
@@ -67,6 +69,7 @@ final class AppModel: ObservableObject {
             case .category(let c): c.title
             case .files: "Large files"
             case .artifacts: "Build artifacts"
+            case .leftovers: "App leftovers"
             }
         }
     }
@@ -623,9 +626,56 @@ final class AppModel: ObservableObject {
     private var artifactTask: Task<Void, Never>?
     private var artifactNoticeTask: Task<Void, Never>?
 
+    @Published var leftoversPhase: Phase = .idle
+    @Published private(set) var leftovers: [AppLeftoverGroup] = []
+    @Published var leftoverSelection: Set<String> = []
+    @Published var leftoverProgress = ArtifactScanProgress(visited: 0, found: 0, currentFolder: "")
+    @Published var leftoverNotice: String?
+    @Published private(set) var lastLeftoverScan: Date?
+    private var leftoverTask: Task<Void, Never>?
+
     var selectedArtifacts: [ProjectArtifact] { artifacts.filter { artifactSelection.contains($0.id) } }
     var selectedArtifactBytes: Int64 { selectedArtifacts.reduce(0) { $0 + $1.bytes } }
     var totalArtifactBytes: Int64 { artifacts.reduce(0) { $0 + $1.bytes } }
+    var selectedLeftovers: [AppLeftoverGroup] { leftovers.filter { $0.isDeletable && leftoverSelection.contains($0.id) } }
+    var selectedLeftoverBytes: Int64 { selectedLeftovers.reduce(0) { $0 + $1.bytes } }
+    var totalLeftoverBytes: Int64 { leftovers.reduce(0) { $0 + $1.bytes } }
+
+    func toggle(_ group: AppLeftoverGroup) {
+        guard group.isDeletable else { return }
+        if leftoverSelection.contains(group.id) { leftoverSelection.remove(group.id) } else { leftoverSelection.insert(group.id) }
+    }
+
+    func scanLeftoversIfNeeded() { if leftoversPhase == .idle, lastLeftoverScan == nil { scanLeftovers() } }
+    func scanLeftovers() {
+        leftoverTask?.cancel(); leftoversPhase = .scanning; leftoverNotice = nil
+        leftoverProgress = ArtifactScanProgress(visited: 0, found: 0, currentFolder: "")
+        leftoverTask = Task { [weak self] in
+            let found = await LeftoverScanner.scan { checked, discovered, location in
+                Task { @MainActor [weak self] in self?.leftoverProgress = ArtifactScanProgress(visited: checked, found: discovered, currentFolder: location) }
+            } onFound: { _ in }
+            guard !Task.isCancelled else { return }
+            self?.leftovers = found; self?.leftoverSelection.formIntersection(Set(found.map(\.id)))
+            self?.leftoversPhase = .ready; self?.lastLeftoverScan = Date()
+        }
+    }
+    func cancelLeftoverScan() { leftoverTask?.cancel(); leftoverTask = nil; leftoversPhase = leftovers.isEmpty ? .idle : .ready }
+    func trashSelectedLeftovers() {
+        let chosen = selectedLeftovers; guard !chosen.isEmpty else { return }
+        var removed = 0, freed: Int64 = 0; var refused: [String] = []
+        for group in chosen { for item in group.items {
+            let verdict = SafetyGuard.verdictForAppLeftover(item.url, matchedOrphanID: item.matchedID)
+            guard verdict.isAllowed else { refused.append("\(group.name): \(verdict.reason ?? "blocked")"); continue }
+            do { try FileManager.default.trashItem(at: item.url, resultingItemURL: nil); removed += 1; freed += item.bytes }
+            catch { refused.append("\(group.name): \(error.localizedDescription)") }
+        }}
+        leftovers = leftovers.compactMap { group in
+            let remaining = group.items.filter { FileManager.default.fileExists(atPath: $0.url.path) }
+            return remaining.isEmpty ? nil : AppLeftoverGroup(id: group.id, name: group.name, confidence: group.confidence, items: remaining)
+        }
+        leftoverSelection.formIntersection(Set(leftovers.map(\.id))); disk = DiskSpace.snapshot()
+        leftoverNotice = "Moved \(removed) \(removed == 1 ? "item" : "items") to the Trash — \(freed.byteLabel)." + (refused.isEmpty ? "" : " \(refused.count) left alone: \(refused.prefix(2).joined(separator: "; "))")
+    }
 
     func toggle(_ artifact: ProjectArtifact) {
         if artifactSelection.contains(artifact.id) { artifactSelection.remove(artifact.id) }
