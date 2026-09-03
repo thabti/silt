@@ -2,7 +2,7 @@
 
 # Silt
 
-*Silt is what settles on a disk. This clears it.*
+Silt is what settles on a disk. This clears it.
 
 A small, deliberately boring macOS disk cleaner. SwiftUI, no dependencies, no network access,
 no background agent, no "1 GB of junk found!" theatre.
@@ -13,36 +13,33 @@ no background agent, no "1 GB of junk found!" theatre.
 
 ## What it does
 
-- **Measures [123 known cache and log locations](docs/catalog.md)** across 25+ language
-  ecosystems — npm, Gradle, Maven, Cargo, pip/uv/Poetry/Conda, CocoaPods, Composer, Bundler,
-  NuGet, Hex, opam, Cabal, and the rest — each with a plain-language line about what happens
-  if it goes.
-- **Lists the biggest files on the disk**, sorted by size and classified by what they are —
-  video, archives, disk images, binaries (detected down to the Mach-O magic number), bundles
-  counted as single items.
-- **Clears only what you tick.** Trash by default, so everything is recoverable; permanent
-  deletion is a separate, clearly marked mode. Hand-picked files are Trash-only.
-- **Uninstalls applications properly** — an icon grid of what is installed, with size and
-  last-opened date, search and filters; removing an app takes its Application Support,
-  caches, preferences, containers and login items with it, matched on bundle id and moved to
-  the Trash.
-- **Finds leftovers from apps you already deleted** — the eleven per-user Library locations,
-  matched against installed bundle ids, with low-confidence guesses shown but never removable.
-- **Refuses to touch what it shouldn't.** Simulators, Docker images, package stores, backups —
-  shown with their size and the correct native command instead of a delete button.
+**Caches.** Measures [123 known cache and log locations](docs/catalog.md) across 25+ language
+ecosystems: npm, Gradle, Maven, Cargo, pip, uv, Poetry, Conda, CocoaPods, Composer, Bundler,
+NuGet, Hex, opam, Cabal and the rest. Every location carries a plain-language line about what
+happens if you clear it, and the tool's own prune command where one exists.
 
-A normal scan takes about **one second** and the first result is on screen in milliseconds —
-the numbers and how they were reached are in [docs/performance.md](docs/performance.md).
+**Build artifacts.** Finds `node_modules`, `.venv`, `Pods`, `target`, `vendor`, `.next`,
+`elm-stuff`, `_build` and friends across your projects. A folder only counts when its marker
+file sits beside it, so a `target` directory without a `Cargo.toml` is left alone. Rows show
+when the project itself was last touched, which is usually what tells you it is safe to drop.
 
-## Safety, in one paragraph
+**Large files.** Everything over a threshold you pick, sorted by size, classified by what it
+is: video, archives, disk images, binaries (detected down to the Mach-O magic number),
+documents. Bundles like `.app` and `.photoslibrary` count as one item instead of thousands.
 
-Three independent gates stand in front of every removal: a hand-written **catalog allow-list**
-(paths cannot enter the pipeline from anywhere else), a **review-only kind** the cleaner
-re-checks independently, and **per-path SafetyGuard rules** — home-folder containment, a
-protected-location denylist (Documents, Desktop, `~/.ssh`, Keychains, iCloud, Photos, …), no
-symlink following, no `..`. Folders stay in place; only their contents are cleared. The full
-model, including what the Large Files view refuses, is in [docs/safety.md](docs/safety.md),
-and 16 tests hold it in place.
+**Applications.** An icon grid of what is installed, with size and last-opened date, search
+and filters. Uninstalling takes the app's Application Support, caches, preferences,
+containers and login items with it, matched on bundle id.
+
+**App leftovers.** Data from apps you already deleted, across eleven per-user Library
+locations. Reverse-DNS matches with no installed app are removable; bare-name guesses are
+shown but locked, because a Homebrew-installed tool has no `.app` to prove it is still there.
+
+**Things it refuses to delete.** Simulators, Docker images, package stores, backups. Shown
+with their size and the correct native command instead of a delete button.
+
+A normal scan takes about one second and the first result appears in milliseconds. The
+measurements behind that are in [docs/performance.md](docs/performance.md).
 
 ## Install
 
@@ -50,59 +47,87 @@ and 16 tests hold it in place.
 brew install --cask thabti/tap/silt
 ```
 
-Signed but not yet notarized — right-click → Open on first launch. Or grab the dmg from
-[Releases](https://github.com/thabti/silt/releases).
+Signed but not yet notarized, so right-click and choose Open on first launch. The dmg is also
+on the [releases page](https://github.com/thabti/silt/releases).
 
-## Running it locally
+Requires macOS 14 or later, Apple silicon.
 
-Requirements: macOS 14+, Xcode command-line tools, and
-[XcodeGen](https://github.com/yonaskolb/XcodeGen). The `.xcodeproj` is generated from
-`project.yml` and git-ignored — edit `project.yml`, never the project file.
+## Safety
+
+Three independent gates stand in front of every removal. The first is a hand-written catalog
+allow-list, so paths cannot enter the pipeline from anywhere else. The second is a review-only
+kind that the cleaner re-checks on its own. The third is a set of per-path `SafetyGuard` rules
+covering home-folder containment, a protected-location denylist over Documents, Desktop,
+`~/.ssh`, Keychains, iCloud Drive and Photos, no symlink following, and no `..` traversal.
+
+Cleaning moves things to the Trash by default, so you can put them back. Permanent deletion
+is a separate mode you have to pick. Folders stay in place and only their contents are
+cleared, because apps expect their own cache directory to exist. Hand-picked files and
+uninstalled apps always go to the Trash.
+
+The protected-location list can be switched off in Settings. While it is off, every page
+carries a warning banner and the toolbar icon turns red, and the structural rules stay on.
+
+28 tests cover the guard, including one that walks the whole catalog and asserts every
+deletable entry passes and every review entry does not. Full details in
+[docs/safety.md](docs/safety.md).
+
+## Permissions
+
+Silt asks for nothing at launch and works without any of these:
+
+- **Full Disk Access** lets it read Safari's cache and app containers. Without it those show
+  as *Partly locked* rather than being silently under-counted.
+- **App Management** is what macOS requires before any app can move another app out of
+  `/Applications`. Without it, uninstalling reports a blocked result with a button to the
+  right settings pane.
+- **Finder automation** is the fallback when App Management is off. Finder is always allowed
+  to trash an application, so Silt asks it to do the move.
+
+The app is not sandboxed, deliberately. A sandboxed app cannot read another app's caches.
+
+## Building from source
 
 ```bash
 git clone git@github.com:thabti/silt.git
 cd silt
 brew install xcodegen          # once
 make run                       # generate project, build, launch
-
-# or work in Xcode: make generate && open Silt.xcodeproj, scheme "Silt", ⌘R
 ```
 
-`make help` lists everything else — `test`, `signed`, `dmg`, `release` (sign → notarize →
-staple), `docs`, `icon`.
+`Silt.xcodeproj` is generated from `project.yml` and git-ignored, so edit `project.yml` rather
+than the project file. Local builds are unsigned: no team, no provisioning, nothing to
+configure. For Xcode, run `make generate` and open the project.
 
-Builds are unsigned for local use — no team, no provisioning, nothing to configure. The app
-asks for no permissions at launch; granting **Full Disk Access** (System Settings › Privacy &
-Security) additionally lets it read Safari's cache and app containers, which are otherwise
-shown as *Partly locked*. It is deliberately not sandboxed — a sandboxed app cannot read other
-apps' caches.
-
-Tests: `make test`.
+`make help` lists the rest: `test`, `signed`, `dmg`, `release` (sign, notarize, staple),
+`docs`, `icon`.
 
 ## Documentation
 
-Everything deeper lives in [`docs/`](docs/README.md):
-
 | | |
 |---|---|
-| [Architecture](docs/architecture.md) | catalog → scanner → index → cleaner, and why |
-| [Safety model](docs/safety.md) | the three gates, the exact guard rules |
-| [Catalog reference](docs/catalog.md) | all 123 locations, generated from source |
-| [Performance](docs/performance.md) | 96 s → 1 s, measured; what was rejected and why |
-| [Design language](docs/design.md) | the System Settings reference, light & dark |
-| [Development](docs/development.md) | building, testing, adding locations, regenerating artifacts |
+| [Architecture](docs/architecture.md) | catalog to scanner to index to cleaner, and why |
+| [Safety model](docs/safety.md) | the three gates and the exact guard rules |
+| [Catalog reference](docs/catalog.md) | all 123 locations, generated from the source |
+| [Performance](docs/performance.md) | 96s to 1s, measured, and what was rejected |
+| [Design language](docs/design.md) | the System Settings reference, light and dark |
+| [Development](docs/development.md) | building, testing, adding locations |
+| [Releasing](docs/releasing.md) | signing, notarizing, the Homebrew tap |
 
 ## Layout
 
 ```
 Sources/Silt/
-  Models/       catalog (the allow-list), scan types, file classification
-  Services/     SafetyGuard, Scanner, FileScanner, Cleaner, DiskSpace
-  ViewModels/   AppModel — all state, pre-aggregated ScanIndex
-  Views/        overview, category detail, large files, sheets
+  Models/       catalog (the allow-list), scan types, file and leftover classification
+  Services/     SafetyGuard, the four scanners, Cleaner, TrashService, DiskSpace
+  ViewModels/   AppModel: all state, plus a pre-aggregated ScanIndex the views read
+  Views/        overview, category detail, large files, artifacts, leftovers,
+                applications, capacity ring, sheets
   Design/       theme: one teal accent, system palette, flat cards
-Tests/SiltTests/  safety rules, catalog integrity, classification
-docs/             the documentation above + dump-catalog tool
-Icon/             icon artwork + generator script
+Tests/SiltTests/  guard rules, catalog integrity, classification
+docs/             the documentation above, plus the catalog generator
+Icon/             icon artwork and its generator script
 project.yml       source of truth for the Xcode project
 ```
+
+Personal project, built in the open. No license file yet, so all rights reserved for now.
