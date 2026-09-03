@@ -693,42 +693,28 @@ final class AppModel: ObservableObject {
         showFilesConfirmation = false
         guard !chosen.isEmpty else { return }
 
-        var removed = 0
-        var freed: Int64 = 0
-        var refused: [String] = []
-
         let permanent = mode == .permanent
-        for entry in chosen {
-            let verdict = SafetyGuard.verdictForUserFile(entry.url, isBundle: entry.isBundle)
-            guard verdict.isAllowed else {
-                refused.append("\(entry.name): \(verdict.reason ?? "blocked")")
-                continue
-            }
-            do {
-                if permanent {
-                    try FileManager.default.removeItem(at: entry.url)
-                } else {
-                    try FileManager.default.trashItem(at: entry.url, resultingItemURL: nil)
-                }
-                removed += 1
-                freed += entry.bytes
-            } catch {
-                refused.append("\(entry.name): \(error.localizedDescription)")
-            }
-        }
+        let tally = Removal.run(chosen.map { entry in
+            RemovalUnit(url: entry.url, bytes: entry.bytes, label: entry.name,
+                        verdict: { SafetyGuard.verdictForUserFile(entry.url, isBundle: entry.isBundle) },
+                        remove: {
+                            if permanent {
+                                try FileManager.default.removeItem(at: entry.url)
+                            } else {
+                                try FileManager.default.trashItem(at: entry.url, resultingItemURL: nil)
+                            }
+                            return false
+                        })
+        })
 
         let fm = FileManager.default
         setFiles(files.filter { fm.fileExists(atPath: $0.url.path) })
         fileSelection = []
         disk = DiskSpace.snapshot()
-
-        var notice = permanent
-            ? "Deleted \(removed) \(removed == 1 ? "item" : "items") — \(freed.byteLabel)."
-            : "Moved \(removed) \(removed == 1 ? "item" : "items") to the Trash — \(freed.byteLabel)."
-        if !refused.isEmpty {
-            notice += " \(refused.count) left alone: \(refused.prefix(2).joined(separator: "; "))"
-        }
-        setFileNotice(notice, hasFailures: !refused.isEmpty)
+        setFileNotice(tally.notice(verb: permanent ? "Deleted" : "Moved",
+                                   noun: "item",
+                                   toTrash: !permanent),
+                      hasFailures: !tally.refused.isEmpty)
     }
 
     // MARK: - Build artifacts
@@ -744,6 +730,8 @@ final class AppModel: ObservableObject {
     private var artifactIndexByID: [String: Int] = [:]
     private var artifactGeneration = 0
     private var artifactNoticeTask: Task<Void, Never>?
+    private var leftoverNoticeTask: Task<Void, Never>?
+    private var applicationsNoticeTask: Task<Void, Never>?
 
     @Published var leftoversPhase: ScanPhase = .idle
     @Published private(set) var leftovers: [AppLeftoverGroup] = []
@@ -845,37 +833,69 @@ final class AppModel: ObservableObject {
     func confirmUninstallApps() {
         let jobs = pendingAppUninstalls
         guard !jobs.isEmpty, runningSelectedBundleIDs().isEmpty else { return }
-        pendingAppUninstalls = []; showAppsConfirmation = false
+        pendingAppUninstalls = []
+        showAppsConfirmation = false
         applicationsNeedsPermission = false
-        var viaFinder = 0
-        var appsMoved = 0, filesMoved = 0, bytes: Int64 = 0, refusals: [String] = []
+
+        // One tally across both levels so refusals stay in per-job order: the app's own
+        // refusal, then that app's support files, then the next app.
+        var tally = RemovalTally()
+        var appsMoved = 0
+        var filesMoved = 0
+
         for job in jobs {
-            let appVerdict = SafetyGuard.verdictForApplicationBundle(job.app.url, bundleID: job.app.bundleID)
-            guard appVerdict.isAllowed else { refusals.append("\(job.app.name): \(appVerdict.reason ?? "blocked")"); continue }
-            do {
-                if try TrashService.trash(job.app.url) == .finder { viaFinder += 1 }
-                appsMoved += 1; bytes += job.app.bytes
-            } catch {
-                refusals.append("\(job.app.name): \(Self.uninstallFailureHint(error))")
-                applicationsNeedsPermission = true
-                continue
-            }
-            for file in job.supportFiles {
-                let verdict = SafetyGuard.verdictForAppLeftover(file.url, matchedOrphanID: job.app.bundleID, verifyInstalled: false)
-                guard verdict.isAllowed else { refusals.append("\(job.app.name): \(verdict.reason ?? "support file blocked")"); continue }
-                do { try FileManager.default.trashItem(at: file.url, resultingItemURL: nil); filesMoved += 1; bytes += file.bytes }
-                catch { refusals.append("\(job.app.name): \(error.localizedDescription)") }
-            }
+            // Only the app bundle may use the Finder fallback. Support files live in
+            // ~/Library and are never App-Management protected, so involving Finder for
+            // them would trigger an automation prompt for nothing.
+            let bundle = Removal.run(
+                [RemovalUnit(url: job.app.url, bytes: job.app.bytes, label: job.app.name,
+                             verdict: { SafetyGuard.verdictForApplicationBundle(job.app.url, bundleID: job.app.bundleID) },
+                             remove: { try TrashService.trash(job.app.url) == .finder })],
+                describeFailure: Self.uninstallFailureHint,
+                onFailure: { [weak self] _ in self?.applicationsNeedsPermission = true }
+            )
+            tally.merge(bundle)
+
+            // If the bundle did not move, its Library data must stay with it.
+            guard bundle.removed == 1 else { continue }
+            appsMoved += 1
+
+            let support = Removal.run(job.supportFiles.map { file in
+                RemovalUnit(url: file.url, bytes: file.bytes, label: job.app.name,
+                            blockedFallback: "support file blocked",
+                            verdict: {
+                                SafetyGuard.verdictForAppLeftover(file.url,
+                                                                  matchedOrphanID: job.app.bundleID,
+                                                                  verifyInstalled: false)
+                            },
+                            remove: {
+                                try FileManager.default.trashItem(at: file.url, resultingItemURL: nil)
+                                return false
+                            })
+            })
+            tally.merge(support)
+            filesMoved += support.removed
         }
+
         let fm = FileManager.default
         installedApps.removeAll { !fm.fileExists(atPath: $0.url.path) }
-        installedAppSelection.formIntersection(Set(installedApps.map(\.id))); disk = DiskSpace.snapshot()
-        var seenRefusals = Set<String>()
-        refusals = refusals.filter { seenRefusals.insert($0).inserted }
-        applicationsNotice = (appsMoved == 0
+        installedAppSelection.formIntersection(Set(installedApps.map(\.id)))
+        disk = DiskSpace.snapshot()
+
+        // One app refusing eleven support files for the same reason collapses to one line.
+        // Done once at the end so the visible cap counts distinct reasons.
+        tally.dedupeRefusals()
+
+        // This page counts two kinds of thing, so it writes its own headline rather than
+        // using the shared template.
+        let headline = appsMoved == 0
             ? "Nothing was uninstalled."
-            : "Uninstalled \(appsMoved) \(appsMoved == 1 ? "app" : "apps") and \(filesMoved) support \(filesMoved == 1 ? "file" : "files") — \(bytes.byteLabel) moved to the Trash." + (viaFinder > 0 ? " Finder handled \(viaFinder) of them." : "")) +
-            (refusals.isEmpty ? "" : " \(refusals.count) left alone: \(refusals.prefix(3).joined(separator: "; "))")
+            : "Uninstalled \(appsMoved) \(appsMoved == 1 ? "app" : "apps") and \(filesMoved) support "
+              + "\(filesMoved == 1 ? "file" : "files") — \(tally.freed.byteLabel) moved to the Trash."
+              + (tally.viaFallback > 0 ? " Finder handled \(tally.viaFallback) of them." : "")
+        setApplicationsNotice(headline + tally.refusalSuffix(max: 3),
+                              hasFailures: !tally.refused.isEmpty)
+
         if !leftovers.isEmpty { scanLeftovers() }
     }
     /// One pending app that is still running, with whatever we last asked of it.
@@ -998,19 +1018,32 @@ final class AppModel: ObservableObject {
         pendingLeftovers = []
         showLeftoversConfirmation = false
         guard !chosen.isEmpty else { return }
-        var removed = 0, freed: Int64 = 0; var refused: [String] = []
-        for group in chosen { for item in group.items {
-            let verdict = SafetyGuard.verdictForAppLeftover(item.url, matchedOrphanID: item.matchedID)
-            guard verdict.isAllowed else { refused.append("\(group.name): \(verdict.reason ?? "blocked")"); continue }
-            do { try FileManager.default.trashItem(at: item.url, resultingItemURL: nil); removed += 1; freed += item.bytes }
-            catch { refused.append("\(group.name): \(error.localizedDescription)") }
-        }}
+
+        // Refusals are attributed to the group, not the individual file, because the group
+        // is what the user selected.
+        let tally = Removal.run(chosen.flatMap { group in
+            group.items.map { item in
+                RemovalUnit(url: item.url, bytes: item.bytes, label: group.name,
+                            verdict: { SafetyGuard.verdictForAppLeftover(item.url, matchedOrphanID: item.matchedID) },
+                            remove: {
+                                try FileManager.default.trashItem(at: item.url, resultingItemURL: nil)
+                                return false
+                            })
+            }
+        })
+
+        // Groups are rebuilt rather than filtered: a group whose items all went must
+        // disappear, not linger as an empty row.
+        let fm = FileManager.default
         leftovers = leftovers.compactMap { group in
-            let remaining = group.items.filter { FileManager.default.fileExists(atPath: $0.url.path) }
-            return remaining.isEmpty ? nil : AppLeftoverGroup(id: group.id, name: group.name, confidence: group.confidence, items: remaining)
+            let remaining = group.items.filter { fm.fileExists(atPath: $0.url.path) }
+            return remaining.isEmpty ? nil : AppLeftoverGroup(id: group.id, name: group.name,
+                                                              confidence: group.confidence, items: remaining)
         }
-        leftoverSelection.formIntersection(Set(leftovers.map(\.id))); disk = DiskSpace.snapshot()
-        leftoverNotice = "Moved \(removed) \(removed == 1 ? "item" : "items") to the Trash — \(freed.byteLabel)." + (refused.isEmpty ? "" : " \(refused.count) left alone: \(refused.prefix(2).joined(separator: "; "))")
+        leftoverSelection.formIntersection(Set(leftovers.map(\.id)))
+        disk = DiskSpace.snapshot()
+        setLeftoverNotice(tally.notice(verb: "Moved", noun: "item", toTrash: true),
+                          hasFailures: !tally.refused.isEmpty)
     }
 
     func toggle(_ artifact: ProjectArtifact) {
@@ -1104,30 +1137,29 @@ final class AppModel: ObservableObject {
         pendingArtifacts = []
         showArtifactsConfirmation = false
         guard !chosen.isEmpty else { return }
-        var removed = 0
-        var freed: Int64 = 0
-        var refused: [String] = []
-        var affectedProjects: Set<URL> = []
-        for artifact in chosen {
-            let verdict = SafetyGuard.verdictForProjectArtifact(artifact.url)
-            guard verdict.isAllowed else {
-                refused.append("\(artifact.projectName): \(verdict.reason ?? "blocked")"); continue
-            }
-            do {
-                try FileManager.default.trashItem(at: artifact.url, resultingItemURL: nil)
-                removed += 1; freed += artifact.bytes
-                affectedProjects.insert(artifact.projectPath.standardizedFileURL)
-            } catch { refused.append("\(artifact.projectName): \(error.localizedDescription)") }
-        }
+
+        let tally = Removal.run(chosen.map { artifact in
+            RemovalUnit(url: artifact.url, bytes: artifact.bytes, label: artifact.projectName,
+                        verdict: { SafetyGuard.verdictForProjectArtifact(artifact.url) },
+                        remove: {
+                            try FileManager.default.trashItem(at: artifact.url, resultingItemURL: nil)
+                            return false
+                        })
+        })
+
+        // Derived from what actually went, rather than mutated inside the removal closure.
+        let gone = Set(tally.removedURLs.map(\.standardizedFileURL))
+        let affectedProjects = Set(chosen
+            .filter { gone.contains($0.url.standardizedFileURL) }
+            .map { $0.projectPath.standardizedFileURL })
+
         let fm = FileManager.default
         artifacts.removeAll { !fm.fileExists(atPath: $0.url.path) }
         reindexArtifacts()
         artifactSelection.formIntersection(Set(artifacts.map(\.id)))
         disk = DiskSpace.snapshot()
-        setArtifactNotice(
-            "Moved \(removed) \(removed == 1 ? "artifact" : "artifacts") to the Trash — \(freed.byteLabel)." +
-            (refused.isEmpty ? "" : " \(refused.count) left alone: \(refused.prefix(2).joined(separator: "; "))"),
-            hasFailures: !refused.isEmpty)
+        setArtifactNotice(tally.notice(verb: "Moved", noun: "artifact", toTrash: true),
+                          hasFailures: !tally.refused.isEmpty)
         refreshArtifacts(in: Array(affectedProjects))
     }
 
@@ -1156,6 +1188,16 @@ final class AppModel: ObservableObject {
     private func setFileNotice(_ text: String, hasFailures: Bool = false) {
         fileNotice = text
         scheduleNoticeClear(hasFailures, task: &fileNoticeTask) { [weak self] in self?.fileNotice = nil }
+    }
+
+    private func setLeftoverNotice(_ text: String, hasFailures: Bool = false) {
+        leftoverNotice = text
+        scheduleNoticeClear(hasFailures, task: &leftoverNoticeTask) { [weak self] in self?.leftoverNotice = nil }
+    }
+
+    private func setApplicationsNotice(_ text: String, hasFailures: Bool = false) {
+        applicationsNotice = text
+        scheduleNoticeClear(hasFailures, task: &applicationsNoticeTask) { [weak self] in self?.applicationsNotice = nil }
     }
 
     private func setArtifactNotice(_ text: String, hasFailures: Bool = false) {

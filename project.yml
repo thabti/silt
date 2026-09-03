@@ -46,6 +46,7 @@ targets:
       - path: Sources/Silt/Services/InstalledApps.swift
       - path: Sources/Silt/Services/LeftoverScanner.swift
       - path: Sources/Silt/Services/Scanner.swift
+      - path: Sources/Silt/Services/Removal.swift
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.sabeur.silt.tests
