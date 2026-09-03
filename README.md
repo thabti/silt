@@ -68,8 +68,8 @@ uninstalled apps always go to the Trash.
 The protected-location list can be switched off in Settings. While it is off, every page
 carries a warning banner and the toolbar icon turns red, and the structural rules stay on.
 
-28 tests cover the guard, including one that walks the whole catalog and asserts every
-deletable entry passes and every review entry does not. Full details in
+41 tests cover the guard and the removal runner, including one that walks the whole catalog
+and asserts every deletable entry passes and every review entry does not. Full details in
 [docs/safety.md](docs/safety.md).
 
 ## Permissions
