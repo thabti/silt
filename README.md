@@ -7,6 +7,8 @@ Silt is what settles on a disk. This clears it.
 A small, deliberately boring macOS disk cleaner. SwiftUI, no dependencies, no network access,
 no background agent, no "1 GB of junk found!" theatre.
 
+Everything below is what it actually does, and the numbers were measured rather than guessed.
+
 ![built with SwiftUI](https://img.shields.io/badge/SwiftUI-macOS%2014%2B-2aa198)
 
 ![Silt overview](docs/images/overview-dark.png)

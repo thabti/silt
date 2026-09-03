@@ -22,8 +22,9 @@ guard let scan = CGContext(data: &pixels, width: width, height: height, bitsPerC
 scan.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
 
 // Count saturated pixels per row and per column. The solid body of the tile scores
-// near-maximum; the soft glow and reflection underneath it score far lower, so a density
-// threshold finds the real edges where a plain bounding box picks up the glow.
+// near-maximum; soft glow, reflections and the surrounding page score far lower, so a
+// density threshold finds the real edges where a plain bounding box picks up the glow.
+// Works against a light or a dark surround, since both are low-chroma next to the tile.
 var rowCounts = [Int](repeating: 0, count: height)
 var colCounts = [Int](repeating: 0, count: width)
 for y in 0..<height {

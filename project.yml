@@ -9,8 +9,8 @@ options:
 settings:
   base:
     SWIFT_VERSION: "5.0"
-    MARKETING_VERSION: "1.5"
-    CURRENT_PROJECT_VERSION: "6"
+    MARKETING_VERSION: "1.6"
+    CURRENT_PROJECT_VERSION: "7"
     DEVELOPMENT_TEAM: ""
     CODE_SIGN_IDENTITY: "-"
     CODE_SIGN_STYLE: Manual
@@ -29,7 +29,7 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.sabeur.silt
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.utilities
-        INFOPLIST_KEY_NSHumanReadableCopyright: "Personal utility. No data leaves this Mac."
+        INFOPLIST_KEY_NSHumanReadableCopyright: "No network access. Nothing leaves this Mac."
         INFOPLIST_KEY_NSAppleEventsUsageDescription: "Silt asks Finder to move apps to the Trash when macOS blocks it from doing so directly."
         INFOPLIST_KEY_CFBundleDisplayName: Silt
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon

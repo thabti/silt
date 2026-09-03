@@ -6,7 +6,9 @@ tiles — and was rejected wholesale. What replaced it:
 
 ## Rules
 
-- **One accent.** `systemTeal`, matching the app icon. Nothing else gets brand color.
+- **One accent.** `systemTeal`, matching the teal of the app icon. Nothing else gets brand
+  color. Icon tiles darken that tint and pick their glyph colour by luminance, because six
+  of the ten system colours fail 3:1 against white.
 - **System palette for everything else.** Category and file-kind tints come from
   `NSColor.system*`, so light/dark adaptation is free and the hues are Apple's, not a model's.
 - **Flat.** Grouped-inset cards (`controlBackgroundColor`, hairline stroke, radius 10), solid

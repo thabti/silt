@@ -73,5 +73,5 @@ One entry in `Sources/Silt/Models/Catalog.swift`:
 
 ```bash
 make docs   # docs/catalog.md — after any Catalog.swift change
-make icon   # icon PNGs from Icon/appicon-source.png — copy per Contents.json
+make icon   # icon PNGs from Icon/appicon-source.png, then copy per Contents.json
 ```
