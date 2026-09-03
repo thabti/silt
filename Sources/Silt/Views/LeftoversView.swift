@@ -12,11 +12,13 @@ struct LeftoversView: View {
                 HStack(spacing: 10) {
                     if model.leftoversPhase == .ready {
                         Button("Rescan") { model.scanLeftovers() }
+                        if !model.leftovers.isEmpty {
+                            PageTotals(bytes: model.totalLeftoverBytes,
+                                       noun: "app",
+                                       count: model.leftovers.count,
+                                       selected: model.selectedLeftovers.count)
+                        }
                     }
-                    PageTotals(bytes: model.totalLeftoverBytes,
-                               noun: "app",
-                               count: model.leftovers.count,
-                               selected: model.selectedLeftovers.count)
                 }
             }
 
@@ -33,8 +35,8 @@ struct LeftoversView: View {
                              label: "Scanning for app leftovers") { model.cancelLeftoverScan() }
 
             case .ready:
-                if let notice = model.leftoverNotice {
-                    PageNotice(text: notice, isWarning: notice.contains("left alone")) {
+                if let notice = model.leftoverNoticeState {
+                    PageNotice(text: notice.text, isWarning: notice.hasFailures) {
                         Button("Rescan") { model.scanLeftovers() }
                     }
                 }
@@ -114,9 +116,9 @@ private struct LeftoverChildRow: View {
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
                 .truncationMode(.middle)
-            Button("Reveal") { model.reveal(item.url) }
-                .buttonStyle(.link)
-                .opacity(hover ? 1 : 0)
+            if hover {
+                Button("Reveal") { model.reveal(item.url) }.buttonStyle(.link)
+            }
             Spacer()
             Text(item.bytes.byteLabel).font(Theme.figure(12))
         }

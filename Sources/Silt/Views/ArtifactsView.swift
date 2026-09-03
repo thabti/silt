@@ -120,7 +120,7 @@ private struct ArtifactRow: View {
                 HStack(spacing: 8) {
                     Text(artifact.displayPath).font(.system(size: 11.5, design: .monospaced))
                         .foregroundStyle(.tertiary).lineLimit(1).truncationMode(.middle)
-                    Button("Reveal", action: onReveal).buttonStyle(.link).opacity(hovering ? 1 : 0)
+                    if hovering { Button("Reveal", action: onReveal).buttonStyle(.link) }
                 }
             }
             Spacer(minLength: 12)
@@ -133,6 +133,8 @@ private struct ArtifactRow: View {
         .padding(.vertical, 9).padding(.horizontal, 12).contentShape(Rectangle())
         .background(RoundedRectangle(cornerRadius: 8).fill(hovering ? Color.primary.opacity(0.04) : .clear))
         .onTapGesture(perform: onToggle).onHover { hovering = $0 }
+        .contextMenu { Button("Reveal in Finder", action: onReveal) }
+        .accessibilityAction(named: "Reveal in Finder", onReveal)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(artifact.projectName), \(artifact.pattern.title), \(artifact.bytes.byteLabel)")
         .accessibilityValue(isSelected ? "Selected" : "Not selected")

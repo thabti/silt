@@ -737,7 +737,15 @@ final class AppModel: ObservableObject {
     @Published private(set) var leftovers: [AppLeftoverGroup] = []
     @Published var leftoverSelection: Set<String> = []
     @Published var leftoverProgress = ArtifactScanProgress(visited: 0, found: 0, currentFolder: "")
-    @Published var leftoverNotice: String?
+    /// Text plus whether the run reported failures. Inferring severity by searching the
+    /// sentence for "left alone" coupled presentation to exact English wording.
+    struct PageNoticeState: Equatable {
+        let text: String
+        let hasFailures: Bool
+    }
+
+    @Published var leftoverNoticeState: PageNoticeState?
+    var leftoverNotice: String? { leftoverNoticeState?.text }
     @Published private(set) var lastLeftoverScan: Date?
     private var leftoverTask: Task<Void, Never>?
 
@@ -862,7 +870,6 @@ final class AppModel: ObservableObject {
 
             let support = Removal.run(job.supportFiles.map { file in
                 RemovalUnit(url: file.url, bytes: file.bytes, label: job.app.name,
-                            blockedFallback: "support file blocked",
                             verdict: {
                                 SafetyGuard.verdictForAppLeftover(file.url,
                                                                   matchedOrphanID: job.app.bundleID,
@@ -986,7 +993,7 @@ final class AppModel: ObservableObject {
 
     func scanLeftoversIfNeeded() { if leftoversPhase == .idle, lastLeftoverScan == nil { scanLeftovers() } }
     func scanLeftovers() {
-        leftoverTask?.cancel(); leftoversPhase = .scanning; leftoverNotice = nil
+        leftoverTask?.cancel(); leftoversPhase = .scanning; leftoverNoticeState = nil
         leftoverProgress = ArtifactScanProgress(visited: 0, found: 0, currentFolder: "")
         leftoverTask = Task { [weak self] in
             let found = await LeftoverScanner.scan { checked, discovered, location in
@@ -1191,8 +1198,8 @@ final class AppModel: ObservableObject {
     }
 
     private func setLeftoverNotice(_ text: String, hasFailures: Bool = false) {
-        leftoverNotice = text
-        scheduleNoticeClear(hasFailures, task: &leftoverNoticeTask) { [weak self] in self?.leftoverNotice = nil }
+        leftoverNoticeState = PageNoticeState(text: text, hasFailures: hasFailures)
+        scheduleNoticeClear(hasFailures, task: &leftoverNoticeTask) { [weak self] in self?.leftoverNoticeState = nil }
     }
 
     private func setApplicationsNotice(_ text: String, hasFailures: Bool = false) {

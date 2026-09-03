@@ -56,14 +56,11 @@ final class RemovalTests: XCTestCase {
         XCTAssertEqual(tally.removed, 2)
     }
 
-    func testBlockedFallbackTextIsUsedWhenTheGuardGivesNoReason() {
-        var custom = unit("support", allowed: false)
-        custom = RemovalUnit(url: custom.url, bytes: custom.bytes, label: custom.label,
-                             blockedFallback: "support file blocked",
-                             verdict: { .blocked("") }, remove: { false })
-        let tally = Removal.run([custom])
-        // An empty reason is still a reason; the fallback covers a nil one.
-        XCTAssertEqual(tally.refused.first, "support: ")
+    func testRefusalCarriesTheGuardsOwnReason() {
+        // Every blocked verdict carries its reason, so the refusal line must quote it
+        // verbatim rather than substituting generic text.
+        let tally = Removal.run([unit("support", allowed: false, reason: "Protected location")])
+        XCTAssertEqual(tally.refused, ["support: Protected location"])
     }
 
     func testNoticePluralisation() {

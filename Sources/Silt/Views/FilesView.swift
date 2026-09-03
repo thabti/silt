@@ -270,10 +270,11 @@ struct FileRow: View {
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                         .truncationMode(.middle)
-                    Button("Reveal", action: onReveal)
-                        .buttonStyle(.link)
-                        .font(Theme.heading(11.5, weight: .medium))
-                        .opacity(hovering ? 1 : 0)
+                    if hovering {
+                        Button("Reveal", action: onReveal)
+                            .buttonStyle(.link)
+                            .font(Theme.heading(11.5, weight: .medium))
+                    }
                 }
             }
 
@@ -296,6 +297,8 @@ struct FileRow: View {
         .contentShape(Rectangle())
         .onTapGesture { onToggle() }
         .onHover { hovering = $0 }
+        .contextMenu { Button("Reveal in Finder", action: onReveal) }
+        .accessibilityAction(named: "Reveal in Finder", onReveal)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(entry.name), \(entry.kind.title), \(entry.bytes.byteLabel)")
         .accessibilityValue(isSelected ? "Selected" : "Not selected")

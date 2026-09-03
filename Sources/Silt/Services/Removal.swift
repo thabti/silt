@@ -12,8 +12,6 @@ struct RemovalUnit {
     /// What a refusal is attributed to: the file's name, the app's name, the group's name.
     /// Never the path — the path is already on screen.
     let label: String
-    /// Reason text for when the guard blocks without giving one.
-    var blockedFallback: String = "blocked"
     let verdict: () -> SafetyGuard.Verdict
     /// Performs the removal. Returns true when a fallback route did it (Finder).
     let remove: () throws -> Bool
@@ -85,7 +83,9 @@ enum Removal {
         for unit in units {
             let verdict = unit.verdict()
             guard verdict.isAllowed else {
-                tally.refuse("\(unit.label): \(verdict.reason ?? unit.blockedFallback)")
+                // `reason` is non-nil whenever the verdict is blocked, so there is no
+                // fallback text to apply — the guard always says why.
+                tally.refuse("\(unit.label): \(verdict.reason ?? "blocked")")
                 continue
             }
             do {

@@ -143,12 +143,11 @@ struct BucketRow: View {
                         .foregroundStyle(.tertiary)
                         .lineLimit(1)
                         .truncationMode(.middle)
-                    // Always present so it is keyboard- and VoiceOver-reachable; the
-                    // opacity only hides it visually until the row is hovered.
-                    Button("Reveal", action: onReveal)
-                        .buttonStyle(.link)
-                        .font(Theme.heading(11, weight: .regular))
-                        .opacity(hovering ? 1 : 0)
+                    if hovering {
+                        Button("Reveal", action: onReveal)
+                            .buttonStyle(.link)
+                            .font(Theme.heading(11, weight: .regular))
+                    }
                 }
             }
 
@@ -171,6 +170,8 @@ struct BucketRow: View {
         .contentShape(Rectangle())
         .onTapGesture { if deletable { onToggle() } }
         .onHover { hovering = $0 }
+        .contextMenu { Button("Reveal in Finder", action: onReveal) }
+        .accessibilityAction(named: "Reveal in Finder", onReveal)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(target.name), \(target.kind.label), \(bucket.bytes.byteLabel)")
         .accessibilityValue(deletable ? (isSelected ? "Selected" : "Not selected") : "Review only")
