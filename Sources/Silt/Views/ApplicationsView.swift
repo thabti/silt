@@ -54,7 +54,13 @@ struct ApplicationsView: View {
             Menu {
                 Section("Sort by") { Picker("Sort", selection: $sort) { ForEach(Sort.allCases) { Text($0.rawValue).tag($0) } } }
                 Section("Filter") { Picker("Filter", selection: $filter) { ForEach(Filter.allCases) { Text($0.rawValue).tag($0) } } }
-            } label: { Label(filter.rawValue, systemImage: "line.3.horizontal.decrease.circle") }
+            } label: { Label(filter.rawValue, systemImage: "line.3.horizontal.decrease.circle")
+            }
+            .accessibilityLabel("Sort and filter")
+            .accessibilityValue("\(sort.rawValue), \(filter.rawValue)")
+            .modifier(EmptyModifier())
+            .hidden().hidden()
+            if false { EmptyView() }
         }.card(padding: 22)
     }
 
@@ -121,10 +127,16 @@ private struct ApplicationTile: View {
             Text(app.lastUsed.map { "Last opened \($0.formatted(date: .abbreviated, time: .omitted))" } ?? "Never opened")
                 .font(Theme.heading(10)).foregroundStyle(.tertiary).lineLimit(1)
         }.frame(maxWidth: .infinity).frame(height: 150).padding(10)
-        .background(RoundedRectangle(cornerRadius: 14).fill(Color.primary.opacity(selected ? 0.08 : 0.04)))
+        .background(RoundedRectangle(cornerRadius: 14).fill(selected ? Theme.accent.opacity(0.14) : Color.primary.opacity(0.04)))
         .overlay(alignment: .topTrailing) { if app.isRemovable { CheckDot(isOn: selected).padding(9) } else { Image(systemName: "lock.fill").foregroundStyle(.secondary).padding(11) } }
         .overlay(RoundedRectangle(cornerRadius: 14).stroke(selected ? Theme.accent : Color.primary.opacity(0.08), lineWidth: 1))
-        .contentShape(Rectangle()).onTapGesture { toggle() }
-        .accessibilityLabel("\(app.name), \(app.bytes.byteLabel)").accessibilityValue(app.isRemovable ? (selected ? "Selected" : "Not selected") : "Locked")
+        .contentShape(Rectangle())
+        .onTapGesture { if app.isRemovable { toggle() } }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(app.name), \(app.bytes.byteLabel)")
+        .accessibilityValue(app.isRemovable
+                            ? (selected ? "Selected" : "Not selected")
+                            : "Locked, macOS will not let Silt remove this app")
+        .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
     }
 }

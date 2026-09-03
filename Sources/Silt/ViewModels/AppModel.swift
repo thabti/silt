@@ -126,6 +126,7 @@ final class AppModel: ObservableObject {
     /// True once the user has touched the selection, which stops a rescan overwriting it.
     private var hasChosenSelection = false
     private var reviewTask: Task<Void, Never>?
+    private var reviewGeneration = 0
     private var lastCleanedIDs: Set<String> = []
     private var catalogLoadTask: Task<[CleanTarget], Never>?
     private var presentTargets: [CleanTarget] = []
@@ -329,6 +330,11 @@ final class AppModel: ObservableObject {
     }
 
     private func finishScan(fullScan: Bool, measured: [String] = [], generation: Int) {
+        // A clean that started while this scan was running owns the phase; never stomp it.
+        guard phase != .cleaning, phase != .finished else {
+            isScanning = false
+            return
+        }
         // An older scan can clear its cancellation check, suspend, and resume after a new
         // scan has started. Without this it would flip isScanning off and re-sort
         // half-refreshed state under the newer run.
@@ -369,6 +375,8 @@ final class AppModel: ObservableObject {
         if reviewState == .measured, !force { return }
 
         reviewTask?.cancel()
+        reviewGeneration &+= 1
+        let reviewRun = reviewGeneration
         reviewState = .measuring
 
         reviewTask = Task { [weak self] in
@@ -383,7 +391,7 @@ final class AppModel: ObservableObject {
             await Scanner.stream(targets: targets) { bucket in
                 Task { @MainActor [weak self] in
                     guard let self else { return }
-                    self.mergeReview(bucket)
+                    self.mergeReview(bucket, generation: reviewRun)
                 }
             }
 
@@ -400,10 +408,14 @@ final class AppModel: ObservableObject {
     func cancelReviewMeasure() {
         reviewTask?.cancel()
         reviewTask = nil
-        reviewState = reviewOnly.isEmpty ? .notMeasured : .measured
+        // A cancelled walk returns a truncated size. Bump the generation so in-flight
+        // results are dropped rather than stored as final.
+        reviewGeneration &+= 1
+        reviewState = .notMeasured
     }
 
-    private func mergeReview(_ bucket: ScannedTarget) {
+    private func mergeReview(_ bucket: ScannedTarget, generation: Int) {
+        guard generation == reviewGeneration else { return }
         if let existing = bucketIndexByID[bucket.id] {
             scanned[existing] = bucket
         } else {
@@ -489,6 +501,9 @@ final class AppModel: ObservableObject {
     }
 
     func requestClean(_ scope: CleanScope = .currentPage) {
+        // Sizes are still moving while a scan runs, and a clean started now would have
+        // its phase overwritten when the scan lands.
+        guard !isScanning else { return }
         let buckets: [ScannedTarget]
         switch scope {
         case .currentPage:
@@ -555,11 +570,6 @@ final class AppModel: ObservableObject {
 
     // MARK: - Large files
 
-    enum FilesPhase: Equatable {
-        case idle
-        case scanning
-        case ready
-    }
 
     struct FileThreshold: Identifiable, Hashable {
         let bytes: Int64
@@ -575,7 +585,7 @@ final class AppModel: ObservableObject {
         FileThreshold(bytes: 1_000_000_000),
     ]
 
-    @Published var filesPhase: FilesPhase = .idle
+    @Published var filesPhase: ScanPhase = .idle
     @Published private(set) var files: [FileEntry] = []
     @Published var fileSelection: Set<String> = []
     @Published var fileProgress = FileScanProgress(visited: 0, found: 0, currentFolder: "")
@@ -619,7 +629,7 @@ final class AppModel: ObservableObject {
         fileTask?.cancel()
         filesPhase = .scanning
         fileSelection = []
-        setFileNotice(nil)
+        clearFileNotice()
         fileProgress = FileScanProgress(visited: 0, found: 0, currentFolder: "")
 
         let minimum = fileThreshold
@@ -714,14 +724,13 @@ final class AppModel: ObservableObject {
         if !refused.isEmpty {
             notice += " \(refused.count) left alone: \(refused.prefix(2).joined(separator: "; "))"
         }
-        setFileNotice(notice)
+        setFileNotice(notice, hasFailures: !refused.isEmpty)
     }
 
     // MARK: - Build artifacts
 
-    enum ArtifactsPhase: Equatable { case idle, scanning, ready }
 
-    @Published var artifactsPhase: ArtifactsPhase = .idle
+    @Published var artifactsPhase: ScanPhase = .idle
     @Published private(set) var artifacts: [ProjectArtifact] = []
     @Published var artifactSelection: Set<String> = []
     @Published var artifactProgress = ArtifactScanProgress(visited: 0, found: 0, currentFolder: "")
@@ -731,7 +740,7 @@ final class AppModel: ObservableObject {
     private var artifactIndexByID: [String: Int] = [:]
     private var artifactNoticeTask: Task<Void, Never>?
 
-    @Published var leftoversPhase: Phase = .idle
+    @Published var leftoversPhase: ScanPhase = .idle
     @Published private(set) var leftovers: [AppLeftoverGroup] = []
     @Published var leftoverSelection: Set<String> = []
     @Published var leftoverProgress = ArtifactScanProgress(visited: 0, found: 0, currentFolder: "")
@@ -739,14 +748,13 @@ final class AppModel: ObservableObject {
     @Published private(set) var lastLeftoverScan: Date?
     private var leftoverTask: Task<Void, Never>?
 
-    enum AppsPhase: Equatable { case idle, scanning, ready }
     struct PendingAppUninstall: Identifiable, Sendable {
         let app: InstalledApp
         let supportFiles: [AppLeftoverItem]
         var id: String { app.id }
         var bytes: Int64 { app.bytes + supportFiles.reduce(0) { $0 + $1.bytes } }
     }
-    @Published var appsPhase: AppsPhase = .idle
+    @Published var appsPhase: ScanPhase = .idle
     @Published private(set) var installedApps: [InstalledApp] = []
     @Published var installedAppSelection: Set<String> = []
     @Published var pendingAppUninstalls: [PendingAppUninstall] = []
@@ -934,7 +942,17 @@ final class AppModel: ObservableObject {
     /// scanned: cache junk, regenerable build artifacts, and data from apps that are gone.
     /// Large files and installed apps are deliberately excluded — those are your own
     /// things, a choice rather than junk, and counting them would overstate the number.
-    var reclaimableTotal: Int64 { junkBytes + totalArtifactBytes + totalLeftoverBytes }
+    var reclaimableTotal: Int64 {
+        // Leftovers under ~/Library/Logs are already inside the `system.logs` catalog
+        // bucket; counting both inflates the headline and offers the same bytes twice.
+        let logsPrefix = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Logs").standardizedFileURL.path
+        let doubleCounted = leftovers
+            .flatMap(\.items)
+            .filter { $0.url.standardizedFileURL.path.hasPrefix(logsPrefix + "/") }
+            .reduce(Int64(0)) { $0 + $1.bytes }
+        return junkBytes + totalArtifactBytes + max(0, totalLeftoverBytes - doubleCounted)
+    }
 
     func toggle(_ group: AppLeftoverGroup) {
         guard group.isDeletable else { return }
@@ -998,7 +1016,7 @@ final class AppModel: ObservableObject {
     func scanArtifacts() {
         artifactTask?.cancel()
         artifactsPhase = .scanning
-        setArtifactNotice(nil)
+        clearArtifactNotice()
         artifactProgress = ArtifactScanProgress(visited: 0, found: 0, currentFolder: "")
 
         artifactTask = Task { [weak self] in
@@ -1096,8 +1114,10 @@ final class AppModel: ObservableObject {
         reindexArtifacts()
         artifactSelection.formIntersection(Set(artifacts.map(\.id)))
         disk = DiskSpace.snapshot()
-        setArtifactNotice("Moved \(removed) \(removed == 1 ? "artifact" : "artifacts") to the Trash — \(freed.byteLabel)." +
-            (refused.isEmpty ? "" : " \(refused.count) left alone: \(refused.prefix(2).joined(separator: "; "))"))
+        setArtifactNotice(
+            "Moved \(removed) \(removed == 1 ? "artifact" : "artifacts") to the Trash — \(freed.byteLabel)." +
+            (refused.isEmpty ? "" : " \(refused.count) left alone: \(refused.prefix(2).joined(separator: "; "))"),
+            hasFailures: !refused.isEmpty)
         refreshArtifacts(in: Array(affectedProjects))
     }
 
@@ -1113,26 +1133,24 @@ final class AppModel: ObservableObject {
         }
     }
 
-    private func setFileNotice(_ notice: String?) {
+    private func clearFileNotice() {
         fileNoticeTask?.cancel()
-        fileNotice = notice
-        guard notice != nil else { return }
-        fileNoticeTask = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(8))
-            guard !Task.isCancelled else { return }
-            self?.fileNotice = nil
-        }
+        fileNotice = nil
     }
 
-    private func setArtifactNotice(_ notice: String?) {
+    private func clearArtifactNotice() {
         artifactNoticeTask?.cancel()
-        artifactNotice = notice
-        guard notice != nil else { return }
-        artifactNoticeTask = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(8))
-            guard !Task.isCancelled else { return }
-            self?.artifactNotice = nil
-        }
+        artifactNotice = nil
+    }
+
+    private func setFileNotice(_ text: String, hasFailures: Bool = false) {
+        fileNotice = text
+        scheduleNoticeClear(hasFailures, task: &fileNoticeTask) { [weak self] in self?.fileNotice = nil }
+    }
+
+    private func setArtifactNotice(_ text: String, hasFailures: Bool = false) {
+        artifactNotice = text
+        scheduleNoticeClear(hasFailures, task: &artifactNoticeTask) { [weak self] in self?.artifactNotice = nil }
     }
 
     private func refreshArtifacts(in projectDirectories: [URL]) {

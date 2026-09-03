@@ -115,7 +115,7 @@ enum SafetyGuard {
 
         guard path.hasPrefix("/") else { return .blocked("Not an absolute path") }
         guard path != "/" else { return .blocked("The startup disk itself") }
-        guard !path.contains("..") else { return .blocked("Path escapes with ..") }
+        guard !standardized.pathComponents.contains("..") else { return .blocked("Path escapes with ..") }
 
         // 1. Must live inside this user's home folder — never /System, /Library, /usr, /Applications.
         guard path == home.path || path.hasPrefix(home.path + "/") else {
@@ -149,6 +149,13 @@ enum SafetyGuard {
             guard resolved.path.hasPrefix(home.path + "/") else {
                 return .blocked("Resolves outside your home folder")
             }
+            // Structural rules are not part of the optional denylist: re-apply depth to
+            // the resolved path, or `~/.cache -> ~/` turns `~/.cache/Documents` into a
+            // depth-2 path that resolves to a depth-1 protected one.
+            let resolvedRelative = String(resolved.path.dropFirst(home.path.count + 1))
+            guard resolvedRelative.split(separator: "/").count >= minimumDepth else {
+                return .blocked("Resolves too close to the top of your home folder")
+            }
             if protectedLocationsEnabled {
                 for guarded in protectedPaths where resolved.path == guarded || resolved.path.hasPrefix(guarded + "/") {
                     return .blocked("Resolves into a protected location")
@@ -170,7 +177,7 @@ enum SafetyGuard {
         let path = standardized.path
 
         guard path.hasPrefix("/") else { return .blocked("Not an absolute path") }
-        guard !path.contains("..") else { return .blocked("Path escapes with ..") }
+        guard !standardized.pathComponents.contains("..") else { return .blocked("Path escapes with ..") }
         guard path.hasPrefix(home.path + "/") else { return .blocked("Outside your home folder") }
 
         let values = try? standardized.resourceValues(forKeys: [.isSymbolicLinkKey, .isDirectoryKey, .isPackageKey])
@@ -210,7 +217,7 @@ enum SafetyGuard {
         let path = standardized.path
 
         guard path.hasPrefix("/") else { return .blocked("Not an absolute path") }
-        guard !path.contains("..") else { return .blocked("Path escapes with ..") }
+        guard !standardized.pathComponents.contains("..") else { return .blocked("Path escapes with ..") }
         guard path.hasPrefix(artifactHome.path + "/") else { return .blocked("Outside your home folder") }
 
         let relative = String(path.dropFirst(artifactHome.path.count + 1))
@@ -235,11 +242,51 @@ enum SafetyGuard {
         return .allowed
     }
 
+    /// True for anything Apple owns, however the identifier is dressed up.
+    ///
+    /// A plain `hasPrefix("com.apple.")` missed the whole Group Containers convention:
+    /// `group.com.apple.mail`, `groups.com.apple.podcasts` and
+    /// `TEAMID.group.com.apple.notes` all start with something else, so Mail, Notes,
+    /// Calendar, Contacts and iCloud Drive data classified as removable orphans.
+    /// Ninety such directories exist on a stock Mac.
+    static func isAppleIdentifier(_ identifier: String) -> Bool {
+        let labels = identifier.lowercased().split(separator: ".").map(String.init)
+        for (offset, label) in labels.enumerated() where label == "com" {
+            if offset + 1 < labels.count, labels[offset + 1] == "apple" { return true }
+        }
+        return false
+    }
+
+    /// Strips a leading Team ID and any `group.`/`groups.` wrapper so the identifier can
+    /// be compared against real bundle ids.
+    static func normalizedLeftoverIdentifier(_ raw: String) -> String {
+        var key = raw.lowercased()
+        let parts = key.split(separator: ".", maxSplits: 1).map(String.init)
+        if parts.count == 2, parts[0].count == 10, parts[0].allSatisfy({ $0.isLetter || $0.isNumber }) {
+            key = parts[1]
+        }
+        for wrapper in ["group.", "groups."] where key.hasPrefix(wrapper) {
+            key = String(key.dropFirst(wrapper.count))
+            break
+        }
+        return key
+    }
+
     static func verdictForAppLeftover(_ url: URL, matchedOrphanID: String, homeDirectory: URL = home,
                                       verifyInstalled: Bool = true) -> Verdict {
         let standardized = url.standardizedFileURL, leftoverHome = homeDirectory.standardizedFileURL
         let id = matchedOrphanID.lowercased()
-        guard !id.hasPrefix("com.apple.") else { return .blocked("Apple system data") }
+        guard !isAppleIdentifier(id), !isAppleIdentifier(normalizedLeftoverIdentifier(id)) else {
+            return .blocked("Apple system data")
+        }
+        guard !isAppleIdentifier(standardized.lastPathComponent) else {
+            return .blocked("Apple system data")
+        }
+        // This rule set was the only one that never consulted the denylist, which left a
+        // single string comparison as the last line of defence over app data.
+        for guarded in protectedPathsForLeftovers where standardized.path == guarded {
+            return .blocked("Protected location")
+        }
         let roots = ["Application Support", "Caches", "Preferences", "Containers", "Group Containers",
                      "Saved Application State", "HTTPStorages", "WebKit", "Logs", "LaunchAgents", "Application Scripts"]
             .map { leftoverHome.appendingPathComponent("Library/\($0)").standardizedFileURL }
@@ -253,8 +300,7 @@ enum SafetyGuard {
         if name.hasSuffix(".savedstate") { name.removeLast(11) }
         if name.hasSuffix(".plist") { name.removeLast(6) }
         if root.lastPathComponent == "Group Containers" {
-            let parts = name.split(separator: ".", maxSplits: 1).map(String.init)
-            if parts.count == 2, parts[0].count == 10, parts[0].allSatisfy({ $0.isLetter || $0.isNumber }) { name = parts[1] }
+            name = normalizedLeftoverIdentifier(name)
         }
         guard name == id || name.hasPrefix(id + ".") else { return .blocked("Name does not match the orphan app") }
         if verifyInstalled, NSWorkspace.shared.urlForApplication(withBundleIdentifier: matchedOrphanID) != nil {
@@ -262,6 +308,10 @@ enum SafetyGuard {
         }
         return .allowed
     }
+
+    /// Leftover entries sit directly inside their root, so a protected *ancestor* cannot
+    /// apply; what matters is that the entry itself is not one of the protected folders.
+    private static let protectedPathsForLeftovers: [String] = protectedPaths
 
     /// The subset of protected locations that also applies to hand-picked files.
     private static let fileProtectedPaths: [String] = [

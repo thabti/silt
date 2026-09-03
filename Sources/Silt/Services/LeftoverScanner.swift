@@ -30,8 +30,11 @@ enum LeftoverScanner {
         var key = raw.lowercased()
         if key.hasSuffix(".savedstate") { key.removeLast(11) }
         if key.hasSuffix(".plist") { key.removeLast(6) }
-        if mode == .group { key = strippingTeamID(key) }
-        guard !key.hasPrefix("com.apple."), !internalNames.contains(key) else { return nil }
+        if mode == .group { key = SafetyGuard.normalizedLeftoverIdentifier(key) }
+        // Test the raw name too: `group.com.apple.mail` survives team-ID stripping and
+        // does not start with "com.apple.".
+        guard !SafetyGuard.isAppleIdentifier(raw), !SafetyGuard.isAppleIdentifier(key),
+              !internalNames.contains(key) else { return nil }
         if isReverseDNS(key) {
             return census.bundleIDs.contains(where: { owns(key, $0) }) ? nil : (key, .high)
         }

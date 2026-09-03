@@ -64,6 +64,16 @@ Extra rules on top of the usual gates:
   automation prompt instead of a dead end. Only when both routes fail is the removal reported
   as refused, with a button that opens the App Management pane.
 
+## Apple's own data is never a leftover
+
+Group Containers are named `group.com.apple.mail`, `groups.com.apple.podcasts` or
+`TEAMID.group.com.apple.notes`. None of those begin with `com.apple.`, so a plain prefix
+test misses every one of them — and a stock Mac has around ninety, holding Mail, Notes,
+Calendar, Contacts and iCloud Drive state. Silt now tests whether `com` is followed by
+`apple` anywhere in the identifier, checks the raw folder name as well as the normalised
+one, and the leftover rule set consults the protected-location denylist like every other
+rule set does. `AppleIdentifierTests` pins all of it.
+
 ## Habits that back the gates
 
 - **Trash by default.** The cache cleaner offers permanent deletion as an explicit,

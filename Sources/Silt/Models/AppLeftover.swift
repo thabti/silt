@@ -1,6 +1,11 @@
 import Foundation
 
-enum LeftoverConfidence: String, Sendable { case high = "HIGH", low = "LOW" }
+enum LeftoverConfidence: String, Sendable {
+    case high = "HIGH", low = "LOW"
+
+    /// Shown to people, unlike `rawValue`, which rendered as a shouted "HIGH"/"LOW".
+    var label: String { self == .high ? "Confident match" : "Possible match" }
+}
 
 struct AppLeftoverItem: Identifiable, Sendable {
     let url: URL

@@ -59,6 +59,9 @@ enum Cleaner {
         let total = scanned.count
 
         for (index, bucket) in scanned.enumerated() {
+            // Without this, a cancelled run still appended an empty outcome per remaining
+            // bucket, which the report then presented as a cleaned location.
+            if Task.isCancelled { break }
             let target = bucket.target
             onProgress(CleanProgress(completed: index, total: total, currentName: target.name))
 

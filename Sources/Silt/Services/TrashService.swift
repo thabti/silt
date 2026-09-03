@@ -40,6 +40,10 @@ enum TrashService {
                 // problem; the Finder attempt is a fallback, not the headline.
                 throw Failure.blocked("\(error.localizedDescription) Finder could not do it either: \(scriptError)")
             }
+            // AppleScript reporting no error is not proof the bundle moved; verify.
+            guard !FileManager.default.fileExists(atPath: url.path) else {
+                throw Failure.blocked("\(error.localizedDescription) Finder reported success but the item is still there.")
+            }
             return .finder
         }
     }

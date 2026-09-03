@@ -49,6 +49,31 @@ enum Theme {
     static let good = Color(nsColor: .systemGreen)
     static let warn = Color(nsColor: .systemOrange)
 
+    /// Black or white, whichever reads on the given fill. Uses relative luminance rather
+    /// than a guess, because the system palette spans yellow to blue.
+    static func readableForeground(on fill: Color) -> Color {
+        let rgb = NSColor(fill).usingColorSpace(.sRGB) ?? .black
+        func channel(_ value: CGFloat) -> Double {
+            let v = Double(value)
+            return v <= 0.03928 ? v / 12.92 : pow((v + 0.055) / 1.055, 2.4)
+        }
+        let luminance = 0.2126 * channel(rgb.redComponent)
+            + 0.7152 * channel(rgb.greenComponent)
+            + 0.0722 * channel(rgb.blueComponent)
+        return luminance > 0.42 ? .black : .white
+    }
+
+    /// Teal reads at roughly 2:1 as small text. Fills and rings keep the bright accent;
+    /// text uses this darker variant.
+    static var accentText: Color {
+        Color(nsColor: NSColor(accent).blended(withFraction: 0.35, of: .textColor) ?? NSColor(accent))
+    }
+
+    /// systemRed passes 3:1 as a graphic but not 4.5:1 behind a 13pt label.
+    static var dangerFill: Color {
+        Color(nsColor: NSColor(danger).blended(withFraction: 0.12, of: .black) ?? NSColor(danger))
+    }
+
     static var canvas: Color { Color(nsColor: .windowBackgroundColor) }
     static var card: Color { Color(nsColor: .controlBackgroundColor) }
     static var hairline: Color { Color.primary.opacity(0.08) }
@@ -111,17 +136,27 @@ extension View {
 struct IconTile: View {
     let symbol: String
     let tint: Color
-    var size: CGFloat = 34
+    var size: CGFloat = 36
+
+    /// System colours are tuned for fills, not for carrying white text. Teal, mint, green,
+    /// orange, cyan and yellow all land under 3:1 against white, so the fill is darkened
+    /// and the glyph colour is chosen from the result's luminance.
+    private var fill: Color {
+        Color(nsColor: NSColor(tint).blended(withFraction: 0.22, of: .black) ?? NSColor(tint))
+    }
+
+    private var glyph: Color { Theme.readableForeground(on: fill) }
 
     var body: some View {
         RoundedRectangle(cornerRadius: size * 0.23, style: .continuous)
-            .fill(tint)
+            .fill(fill)
             .frame(width: size, height: size)
             .overlay(
                 Image(systemName: symbol)
                     .font(.system(size: size * 0.52, weight: .medium))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(glyph)
             )
+            .accessibilityHidden(true)
     }
 }
 
@@ -131,11 +166,12 @@ struct Pill: View {
 
     var body: some View {
         Text(text)
-            .font(.system(size: 10.5, weight: .medium))
+            .font(Theme.heading(10.5, weight: .medium))
             .padding(.horizontal, 7)
             .padding(.vertical, 2.5)
-            .background(Capsule().fill(color.opacity(0.14)))
-            .foregroundStyle(color)
+            .background(Capsule().fill(color.opacity(0.16)))
+            .overlay(Capsule().stroke(color.opacity(0.55), lineWidth: 1))
+            .foregroundStyle(.primary)
     }
 }
 

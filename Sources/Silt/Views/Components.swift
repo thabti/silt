@@ -11,12 +11,12 @@ struct CheckDot: View {
                 .fill(isOn ? AnyShapeStyle(tint) : AnyShapeStyle(Color.primary.opacity(0.05)))
                 .frame(width: 20, height: 20)
             Circle()
-                .stroke(isOn ? tint : Color.primary.opacity(0.22), lineWidth: 1)
+                .stroke(isOn ? tint : Color.primary.opacity(0.35), lineWidth: 1.2)
                 .frame(width: 20, height: 20)
             if isOn {
                 Image(systemName: "checkmark")
                     .font(.system(size: 10, weight: .bold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(Theme.readableForeground(on: tint))
             }
         }
         .animation(.snappy(duration: 0.15), value: isOn)

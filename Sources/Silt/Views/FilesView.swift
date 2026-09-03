@@ -167,12 +167,12 @@ struct FilesView: View {
     private var chips: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
-                chip(title: "All \(model.files.count)", tint: Theme.accent, active: model.kindFilter == nil) {
+                chip(title: "All · \(model.files.count)", tint: Theme.accent, active: model.kindFilter == nil) {
                     model.kindFilter = nil
                 }
                 ForEach(model.fileKindTotals) { total in
                     chip(
-                        title: "\(total.kind.title) \(total.count)",
+                        title: "\(total.kind.title) · \(total.count)",
                         tint: total.kind.tint,
                         active: model.kindFilter == total.kind
                     ) {
@@ -190,12 +190,12 @@ struct FilesView: View {
                 .font(Theme.heading(12.5, weight: .semibold))
                 .padding(.horizontal, 12)
                 .padding(.vertical, 7)
-                .background(
-                    Capsule().fill(active ? AnyShapeStyle(tint) : AnyShapeStyle(Color.primary.opacity(0.06)))
-                )
-                .foregroundStyle(active ? .white : .primary)
+                .background(Capsule().fill(active ? tint.opacity(0.20) : Color.primary.opacity(0.06)))
+                .overlay(Capsule().stroke(active ? tint : .clear, lineWidth: 1.5))
+                .foregroundStyle(.primary)
         }
         .buttonStyle(.plain)
+        .accessibilityAddTraits(active ? [.isButton, .isSelected] : .isButton)
     }
 
 
@@ -266,7 +266,7 @@ struct FileRow: View {
                 HStack(spacing: 8) {
                     Text(entry.displayPath)
                         .font(.system(size: 11.5, design: .monospaced))
-                        .foregroundStyle(.tertiary)
+                        .foregroundStyle(.secondary)
                         .lineLimit(1)
                         .truncationMode(.middle)
                     if hovering {

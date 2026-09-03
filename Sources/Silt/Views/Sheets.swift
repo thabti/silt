@@ -109,6 +109,7 @@ struct ReportSheet: View {
                 Text(report.bytesFreed.byteLabel)
                     .font(Theme.figure(34, weight: .bold))
                 Text(model.mode == .trash && !report.outcomes.isEmpty
+                     && !report.outcomes.contains { $0.targetID == Catalog.trashID }
                      ? "moved to the Trash"
                      : "freed")
                     .font(Theme.heading(16, weight: .medium))

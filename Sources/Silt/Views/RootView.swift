@@ -130,7 +130,7 @@ struct RootView: View {
                     Section("After cleaning") {
                         Picker("After cleaning", selection: $model.mode) {
                             ForEach(DeletionMode.allCases) { mode in
-                                Text(mode.title).tag(mode)
+                                Text(mode.shortTitle).tag(mode)
                             }
                         }
                         .pickerStyle(.inline)
@@ -145,7 +145,7 @@ struct RootView: View {
                     model.requestCleanFiles()
                 } label: {
                     Label(
-                        model.selectedFileBytes > 0 ? "Clean \(model.selectedFileBytes.byteLabel)" : "Clean",
+                        model.selectedFileBytes > 0 ? "Clean \(model.selectedFileBytes.byteLabel)…" : "Clean…",
                         systemImage: "trash"
                     )
                     .labelStyle(.titleAndIcon)
@@ -156,7 +156,7 @@ struct RootView: View {
                 .help("\(model.selectedFiles.count) selected · \(model.mode.explanation)")
             }
             if model.route == .installedApps {
-                Button(model.selectedInstalledAppBytes > 0 ? "Uninstall \(model.selectedInstalledAppBytes.byteLabel)" : "Uninstall") { model.requestUninstallApps() }
+                Button(model.selectedInstalledAppBytes > 0 ? "Uninstall \(model.selectedInstalledAppBytes.byteLabel)…" : "Uninstall…") { model.requestUninstallApps() }
                     .buttonStyle(.borderedProminent).tint(Theme.danger)
                     .disabled(model.selectedInstalledApps.isEmpty || model.isPreparingUninstall)
             }
@@ -166,7 +166,7 @@ struct RootView: View {
                     model.requestTrashArtifacts()
                 } label: {
                     Label(
-                        model.selectedArtifactBytes > 0 ? "Move to Trash \(model.selectedArtifactBytes.byteLabel)" : "Move to Trash",
+                        model.selectedArtifactBytes > 0 ? "Move \(model.selectedArtifactBytes.byteLabel) to Trash…" : "Move to Trash…",
                         systemImage: "trash"
                     )
                     .labelStyle(.titleAndIcon)
@@ -178,7 +178,7 @@ struct RootView: View {
 
             if model.route == .leftovers, model.leftoversPhase == .ready, !model.leftovers.isEmpty {
                 Button { model.requestTrashLeftovers() } label: {
-                    Label(model.selectedLeftoverBytes > 0 ? "Move to Trash \(model.selectedLeftoverBytes.byteLabel)" : "Move to Trash", systemImage: "trash")
+                    Label(model.selectedLeftoverBytes > 0 ? "Move \(model.selectedLeftoverBytes.byteLabel) to Trash…" : "Move to Trash…", systemImage: "trash")
                         .labelStyle(.titleAndIcon)
                 }.disabled(model.selectedLeftovers.isEmpty).keyboardShortcut(.return, modifiers: .command)
                     .help("High-confidence leftovers always go to the Trash")
@@ -189,7 +189,7 @@ struct RootView: View {
                     Section("After cleaning") {
                         Picker("After cleaning", selection: $model.mode) {
                             ForEach(DeletionMode.allCases) { mode in
-                                Text(mode.title).tag(mode)
+                                Text(mode.shortTitle).tag(mode)
                             }
                         }
                         .pickerStyle(.inline)
@@ -201,12 +201,13 @@ struct RootView: View {
 
                 if model.bytesSelectedOutsideScope > 0 {
                     Menu {
-                        Button("Clean everything selected — \(model.selectedBytes.byteLabel)") {
+                        Button("Clean everything selected — \(model.selectedBytes.byteLabel)…") {
                             model.requestClean(.everythingSelected)
                         }
                     } label: {
                         Image(systemName: "ellipsis.circle")
                     }
+                    .accessibilityLabel("More cleaning options")
                     .help("Includes locations selected on other pages")
                 }
 
@@ -214,7 +215,7 @@ struct RootView: View {
                     model.requestClean(.currentPage)
                 } label: {
                     Label(
-                        model.scopedBytes > 0 ? "Clean \(model.scopedBytes.byteLabel)" : "Clean",
+                        model.scopedBytes > 0 ? "Clean \(model.scopedBytes.byteLabel)…" : "Clean…",
                         systemImage: "trash"
                     )
                     .labelStyle(.titleAndIcon)
