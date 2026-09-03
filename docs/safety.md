@@ -58,8 +58,11 @@ Extra rules on top of the usual gates:
   until they are gone.
 - **Trash-only, always.** There is no permanent-delete mode in this feature.
 - macOS 13+ requires **App Management** (System Settings › Privacy & Security) before
-  anything can be moved out of `/Applications`. Silt does not escalate privileges — a
-  refused move is reported per app with that hint.
+  anything can be moved out of `/Applications`. Silt does not escalate privileges. It first
+  tries `FileManager.trashItem`; if macOS blocks that, it asks **Finder** to do the move via
+  Apple Events (`TrashService`), which is allowed to trash applications — a familiar one-time
+  automation prompt instead of a dead end. Only when both routes fail is the removal reported
+  as refused, with a button that opens the App Management pane.
 
 ## Habits that back the gates
 

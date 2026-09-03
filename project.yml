@@ -30,6 +30,7 @@ targets:
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.utilities
         INFOPLIST_KEY_NSHumanReadableCopyright: "Personal utility. No data leaves this Mac."
+        INFOPLIST_KEY_NSAppleEventsUsageDescription: "Silt asks Finder to move apps to the Trash when macOS blocks it from doing so directly."
         INFOPLIST_KEY_CFBundleDisplayName: Silt
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ENABLE_APP_SANDBOX: NO

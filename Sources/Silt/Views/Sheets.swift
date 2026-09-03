@@ -270,7 +270,7 @@ struct FilesConfirmSheet: View {
 
 struct AppsConfirmSheet: View {
     @ObservedObject var model: AppModel
-    @State private var runningIDs: Set<String> = []
+    @State private var running: [AppModel.RunningPendingApp] = []
     private var total: Int64 { model.pendingAppUninstalls.reduce(0) { $0 + $1.bytes } }
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -282,12 +282,45 @@ struct AppsConfirmSheet: View {
                 Text("Each app and the support files below move to the Trash, so you can put them back.")
                     .font(Theme.heading(13)).foregroundStyle(.secondary)
             }
-            if !runningIDs.isEmpty {
-                VStack(alignment: .leading, spacing: 8) {
-                    Label("Running apps must quit first", systemImage: "exclamationmark.triangle.fill").foregroundStyle(Theme.danger)
-                    Text(runningNames).font(Theme.heading(13)).foregroundStyle(.secondary)
-                    Button("Quit apps") { model.quitPendingApps(); refreshRunning() }.buttonStyle(.bordered)
-                    Text("If an app refuses to quit, cancel and quit it manually.").font(Theme.heading(11)).foregroundStyle(.tertiary)
+            if !running.isEmpty {
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(Theme.danger)
+                        Text(running.count == 1 ? "1 app is still running" : "\(running.count) apps are still running")
+                            .font(Theme.heading(14, weight: .semibold))
+                        Spacer()
+                        Button("Quit All") { model.quitPendingApps() }
+                            .buttonStyle(.bordered)
+                            .disabled(running.allSatisfy(\.asked))
+                    }
+
+                    // One row per app so a slow quit, a refusal and a success are all
+                    // visible individually — the old flat list could not show any of that.
+                    ForEach(running) { entry in
+                        HStack(spacing: 10) {
+                            Image(nsImage: ApplicationIconCache.shared.icon(for: entry.app.url))
+                                .resizable().scaledToFit().frame(width: 20, height: 20)
+                            Text(entry.app.name).font(Theme.heading(13))
+                            Spacer()
+                            if entry.refused {
+                                Text("Not responding").font(Theme.heading(12)).foregroundStyle(Theme.warn)
+                                Button("Force Quit") { model.quit(entry.app.bundleID, force: true) }
+                                    .buttonStyle(.borderedProminent).tint(Theme.danger).controlSize(.small)
+                            } else if entry.asked {
+                                ProgressView().controlSize(.small)
+                                Text("Quitting…").font(Theme.heading(12)).foregroundStyle(.secondary)
+                            } else {
+                                Button("Quit") { model.quit(entry.app.bundleID) }
+                                    .buttonStyle(.bordered).controlSize(.small)
+                            }
+                        }
+                        .accessibilityElement(children: .combine)
+                    }
+
+                    Text(running.contains(where: \.refused)
+                         ? "Force quitting loses unsaved work in that app."
+                         : "Uninstalling a running app leaves it half-removed, so Silt waits.")
+                        .font(Theme.heading(11)).foregroundStyle(.tertiary)
                 }.card(radius: 12, padding: 12)
             }
             ScrollView {
@@ -302,11 +335,23 @@ struct AppsConfirmSheet: View {
                 }
             }.frame(maxHeight: 360)
             HStack { Text("Combined total").font(Theme.heading(13, weight: .semibold)); Spacer(); Text(total.byteLabel).font(Theme.figure(16)) }
-            HStack { Spacer(); Button("Cancel") { model.showAppsConfirmation = false; model.pendingAppUninstalls = [] }.keyboardShortcut(.cancelAction); Button("Uninstall") { model.confirmUninstallApps() }.buttonStyle(.borderedProminent).tint(Theme.danger).disabled(!runningIDs.isEmpty).keyboardShortcut(.defaultAction) }
+            HStack { Spacer(); Button("Cancel") { model.showAppsConfirmation = false; model.pendingAppUninstalls = [] }.keyboardShortcut(.cancelAction); Button("Uninstall") { model.confirmUninstallApps() }.buttonStyle(.borderedProminent).tint(Theme.danger).disabled(!running.isEmpty).keyboardShortcut(.defaultAction) }
         }.padding(26).frame(width: 620)
-        .onAppear { refreshRunning() }
-        .task { while !Task.isCancelled { try? await Task.sleep(for: .milliseconds(750)); refreshRunning() } }
+        .task {
+            // terminate() is a request, not a command: it returns immediately and the app
+            // quits (or does not) in its own time. Poll so the sheet reflects reality
+            // instead of a single stale check taken a millisecond after asking.
+            model.clearQuitRequests()
+            while !Task.isCancelled {
+                running = model.runningPendingApps()
+                try? await Task.sleep(for: .milliseconds(500))
+            }
+        }
+        .task {
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .milliseconds(750))
+                running = model.runningPendingApps()
+            }
+        }
     }
-    private var runningNames: String { model.pendingAppUninstalls.filter { runningIDs.contains($0.app.bundleID) }.map(\.app.name).joined(separator: ", ") }
-    private func refreshRunning() { runningIDs = model.runningSelectedBundleIDs() }
 }

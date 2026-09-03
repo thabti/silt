@@ -720,12 +720,13 @@ final class AppModel: ObservableObject {
         guard !jobs.isEmpty, runningSelectedBundleIDs().isEmpty else { return }
         pendingAppUninstalls = []; showAppsConfirmation = false
         applicationsNeedsPermission = false
+        var viaFinder = 0
         var appsMoved = 0, filesMoved = 0, bytes: Int64 = 0, refusals: [String] = []
         for job in jobs {
             let appVerdict = SafetyGuard.verdictForApplicationBundle(job.app.url, bundleID: job.app.bundleID)
             guard appVerdict.isAllowed else { refusals.append("\(job.app.name): \(appVerdict.reason ?? "blocked")"); continue }
             do {
-                try FileManager.default.trashItem(at: job.app.url, resultingItemURL: nil)
+                if try TrashService.trash(job.app.url) == .finder { viaFinder += 1 }
                 appsMoved += 1; bytes += job.app.bytes
             } catch {
                 refusals.append("\(job.app.name): \(Self.uninstallFailureHint(error))")
@@ -742,20 +743,71 @@ final class AppModel: ObservableObject {
         let fm = FileManager.default
         installedApps.removeAll { !fm.fileExists(atPath: $0.url.path) }
         installedAppSelection.formIntersection(Set(installedApps.map(\.id))); disk = DiskSpace.snapshot()
+        var seenRefusals = Set<String>()
+        refusals = refusals.filter { seenRefusals.insert($0).inserted }
         applicationsNotice = (appsMoved == 0
             ? "Nothing was uninstalled."
-            : "Uninstalled \(appsMoved) \(appsMoved == 1 ? "app" : "apps") and \(filesMoved) support \(filesMoved == 1 ? "file" : "files") — \(bytes.byteLabel) moved to the Trash.") +
+            : "Uninstalled \(appsMoved) \(appsMoved == 1 ? "app" : "apps") and \(filesMoved) support \(filesMoved == 1 ? "file" : "files") — \(bytes.byteLabel) moved to the Trash." + (viaFinder > 0 ? " Finder handled \(viaFinder) of them." : "")) +
             (refusals.isEmpty ? "" : " \(refusals.count) left alone: \(refusals.prefix(3).joined(separator: "; "))")
         if !leftovers.isEmpty { scanLeftovers() }
     }
+    /// One pending app that is still running, with whatever we last asked of it.
+    struct RunningPendingApp: Identifiable, Equatable {
+        let app: InstalledApp
+        var asked: Bool          // a graceful quit has been requested
+        var refused: Bool        // it ignored the request long enough to offer force quit
+        var id: String { app.id }
+    }
+
+    /// Bundle ids we have asked to quit, and when — so a quit that is merely slow reads as
+    /// "Quitting…" rather than as a dead button.
+    private var quitRequests: [String: Date] = [:]
+
+    /// Case-insensitive: Info.plist casing and the running process's casing can differ.
+    private func runningApplications(matching ids: Set<String>) -> [NSRunningApplication] {
+        let wanted = Set(ids.map { $0.lowercased() })
+        return NSWorkspace.shared.runningApplications.filter {
+            guard let id = $0.bundleIdentifier?.lowercased() else { return false }
+            return wanted.contains(id)
+        }
+    }
+
     func runningSelectedBundleIDs() -> Set<String> {
         let ids = Set(pendingAppUninstalls.map { $0.app.bundleID })
-        return Set(NSWorkspace.shared.runningApplications.compactMap(\.bundleIdentifier).filter(ids.contains))
+        return Set(runningApplications(matching: ids).compactMap { $0.bundleIdentifier })
     }
-    func quitPendingApps() {
-        let ids = runningSelectedBundleIDs()
-        NSWorkspace.shared.runningApplications.filter { $0.bundleIdentifier.map(ids.contains) == true }.forEach { $0.terminate() }
+
+    /// The pending apps still running, in a form the sheet can render per app.
+    func runningPendingApps() -> [RunningPendingApp] {
+        let stillRunning = Set(runningSelectedBundleIDs().map { $0.lowercased() })
+        return pendingAppUninstalls
+            .filter { stillRunning.contains($0.app.bundleID.lowercased()) }
+            .map { job in
+                let requested = quitRequests[job.app.bundleID.lowercased()]
+                // Give an app a few seconds to put its affairs in order before suggesting force.
+                let refused = requested.map { Date().timeIntervalSince($0) > 4 } ?? false
+                return RunningPendingApp(app: job.app, asked: requested != nil, refused: refused)
+            }
     }
+
+    /// Ask one app to quit. `force` sends SIGKILL-equivalent termination, which loses
+    /// unsaved work — only ever offered after a graceful request has been ignored.
+    func quit(_ bundleID: String, force: Bool = false) {
+        let matches = runningApplications(matching: [bundleID])
+        guard !matches.isEmpty else { return }
+        quitRequests[bundleID.lowercased()] = force ? Date.distantPast : Date()
+        for application in matches {
+            _ = force ? application.forceTerminate() : application.terminate()
+        }
+    }
+
+    func quitPendingApps(force: Bool = false) {
+        for entry in runningPendingApps() {
+            quit(entry.app.bundleID, force: force)
+        }
+    }
+
+    func clearQuitRequests() { quitRequests.removeAll() }
 
     var selectedArtifacts: [ProjectArtifact] { artifacts.filter { artifactSelection.contains($0.id) } }
     var selectedArtifactBytes: Int64 { selectedArtifacts.reduce(0) { $0 + $1.bytes } }
