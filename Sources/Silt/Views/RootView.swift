@@ -22,6 +22,7 @@ struct RootView: View {
         .sheet(isPresented: $model.showFilesConfirmation) {
             FilesConfirmSheet(model: model)
         }
+        .sheet(isPresented: $model.showAppsConfirmation) { AppsConfirmSheet(model: model) }
         .alert("Turn off personal-folder protection?", isPresented: $showDisableProtectionConfirmation) {
             Button("Cancel", role: .cancel) {}
             Button("Turn Off Protection", role: .destructive) {
@@ -45,6 +46,7 @@ struct RootView: View {
             if model.phase == .idle { model.scan() }
             if model.route == .artifacts { model.scanArtifactsIfNeeded() }
             if model.route == .leftovers { model.scanLeftoversIfNeeded() }
+            if model.route == .installedApps { model.scanInstalledAppsIfNeeded() }
         }
         .onChange(of: protectedLocations) { _, enabled in
             SafetyGuard.protectedLocationsEnabled = enabled
@@ -55,6 +57,7 @@ struct RootView: View {
             if route == .category(.review) { model.measureReview() }
             if route == .artifacts { model.scanArtifactsIfNeeded() }
             if route == .leftovers { model.scanLeftoversIfNeeded() }
+            if route == .installedApps { model.scanInstalledAppsIfNeeded() }
         }
     }
 
@@ -124,6 +127,11 @@ struct RootView: View {
                 .tint(model.mode == .permanent ? Theme.danger : nil)
                 .help("\(model.selectedFiles.count) selected · \(model.mode.explanation)")
             }
+            if model.route == .installedApps {
+                Button(model.selectedInstalledAppBytes > 0 ? "Uninstall \(model.selectedInstalledAppBytes.byteLabel)" : "Uninstall") { model.requestUninstallApps() }
+                    .buttonStyle(.borderedProminent).tint(Theme.danger)
+                    .disabled(model.selectedInstalledApps.isEmpty)
+            }
 
             if model.route == .artifacts, model.artifactsPhase == .ready, !model.artifacts.isEmpty {
                 Button {
@@ -148,7 +156,7 @@ struct RootView: View {
                     .help("High-confidence leftovers always go to the Trash")
             }
 
-            if model.route != .files, model.route != .artifacts, model.route != .leftovers, model.phase == .ready, model.scopedCleanableCount > 0 {
+            if model.route.isCachePage, model.phase == .ready, model.scopedCleanableCount > 0 {
                 Menu {
                     Section("After cleaning") {
                         Picker("After cleaning", selection: $model.mode) {
@@ -247,6 +255,7 @@ struct RootView: View {
                     sidebarRow(route: .files, symbol: "doc.text.magnifyingglass", trailing: model.totalFileBytes)
                     sidebarRow(route: .artifacts, symbol: "shippingbox", trailing: model.totalArtifactBytes)
                     sidebarRow(route: .leftovers, symbol: "app.dashed", trailing: model.totalLeftoverBytes)
+                    sidebarRow(route: .installedApps, symbol: "app.badge", trailing: model.totalInstalledAppBytes)
                 }
             }
             .listStyle(.sidebar)
@@ -352,6 +361,8 @@ struct RootView: View {
             ScrollView {
                 LeftoversView(model: model).padding(24).frame(maxWidth: 900, alignment: .leading).frame(maxWidth: .infinity)
             }
+        } else if model.route == .installedApps {
+            ApplicationsView(model: model)
         } else if model.phase == .cleaning {
             StatusPanel(
                 symbol: "trash",
@@ -375,6 +386,8 @@ struct RootView: View {
                     case .artifacts:
                         EmptyView()
                     case .leftovers:
+                        EmptyView()
+                    case .installedApps:
                         EmptyView()
                     }
                 }

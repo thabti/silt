@@ -1,6 +1,15 @@
 import XCTest
 
 final class LeftoverTests: XCTestCase {
+    func testAssociatedFilesMatchOnlyBundleIDFamily() throws {
+        let home = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let root = home.appendingPathComponent("Library/Application Support")
+        try FileManager.default.createDirectory(at: root.appendingPathComponent("com.example.code.helper"), withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: root.appendingPathComponent("Code"), withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: home) }
+        let items = LeftoverScanner.items(forBundleID: "com.example.code", appName: "Code", homeDirectory: home)
+        XCTAssertEqual(items.map { $0.url.lastPathComponent }, ["com.example.code.helper"])
+    }
     func testMatchingLogic() {
         XCTAssertTrue(LeftoverScanner.isReverseDNS("com.example.app"))
         XCTAssertFalse(LeftoverScanner.isReverseDNS("Sublime Text"))

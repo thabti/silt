@@ -71,4 +71,23 @@ enum LeftoverScanner {
         }.sorted { $0.bytes > $1.bytes }
         results.forEach(onFound); return results
     }
+
+    static func items(forBundleID bundleID: String, appName: String,
+                      homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser) -> [AppLeftoverItem] {
+        let fm = FileManager.default, id = bundleID.lowercased()
+        return locations.flatMap { location -> [AppLeftoverItem] in
+            let root = homeDirectory.appendingPathComponent(location.relative)
+            let entries = (try? fm.contentsOfDirectory(at: root, includingPropertiesForKeys: [.isSymbolicLinkKey])) ?? []
+            return entries.compactMap { entry in
+                var key = entry.lastPathComponent.lowercased()
+                if key.hasSuffix(".savedstate") { key.removeLast(11) }
+                if key.hasSuffix(".plist") { key.removeLast(6) }
+                if location.mode == .group { key = strippingTeamID(key) }
+                guard key == id || key.hasPrefix(id + ".") else { return nil }
+                return AppLeftoverItem(url: entry, matchedID: bundleID,
+                    location: location.relative.replacingOccurrences(of: "Library/", with: ""),
+                    bytes: Scanner.size(of: entry).bytes, confidence: .high)
+            }
+        }
+    }
 }

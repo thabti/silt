@@ -24,6 +24,7 @@ struct SiltApp: App {
                 Button("Large files") { model.route = .files }.keyboardShortcut("2", modifiers: .command)
                 Button("Build artifacts") { model.route = .artifacts }.keyboardShortcut("3", modifiers: .command)
                 Button("App leftovers") { model.route = .leftovers }.keyboardShortcut("4", modifiers: .command)
+                Button("Applications") { model.route = .installedApps }.keyboardShortcut("5", modifiers: .command)
             }
         }
 

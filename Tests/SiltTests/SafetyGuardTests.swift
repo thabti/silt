@@ -1,6 +1,27 @@
 import XCTest
 
 final class SafetyGuardTests: XCTestCase {
+    func testApplicationBundleGuard() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let home = root.appendingPathComponent("Home")
+        let apps = home.appendingPathComponent("Applications")
+        let valid = apps.appendingPathComponent("Foo.app")
+        try FileManager.default.createDirectory(at: valid, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        XCTAssertTrue(SafetyGuard.verdictForApplicationBundle(valid, bundleID: "com.example.foo", homeDirectory: home).isAllowed)
+        XCTAssertFalse(SafetyGuard.verdictForApplicationBundle(URL(fileURLWithPath: "/System/Applications/Safari.app"), bundleID: "com.example.safari", homeDirectory: home).isAllowed)
+        XCTAssertFalse(SafetyGuard.verdictForApplicationBundle(valid, bundleID: "com.apple.foo", homeDirectory: home).isAllowed)
+        if let ownID = Bundle.main.bundleIdentifier {
+            XCTAssertFalse(SafetyGuard.verdictForApplicationBundle(valid, bundleID: ownID, homeDirectory: home).isAllowed)
+        }
+        XCTAssertFalse(SafetyGuard.verdictForApplicationBundle(apps.appendingPathComponent("Foo"), bundleID: "com.example.foo", homeDirectory: home).isAllowed)
+        let deep = apps.appendingPathComponent("One/Two/Foo.app")
+        try FileManager.default.createDirectory(at: deep, withIntermediateDirectories: true)
+        XCTAssertFalse(SafetyGuard.verdictForApplicationBundle(deep, bundleID: "com.example.foo", homeDirectory: home).isAllowed)
+        let link = apps.appendingPathComponent("Link.app")
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: valid)
+        XCTAssertFalse(SafetyGuard.verdictForApplicationBundle(link, bundleID: "com.example.foo", homeDirectory: home).isAllowed)
+    }
 
     private let home = FileManager.default.homeDirectoryForCurrentUser
 

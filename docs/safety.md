@@ -40,6 +40,27 @@ confirmation sheet** that lists each file and its path; permanent deletion carri
 warning that these are your own files, not regenerable caches. Build artifacts remain
 Trash-only — they regenerate anyway, so permanence buys nothing.
 
+## Uninstalling applications
+
+The Applications page removes an app together with the support files keyed to its bundle id.
+Extra rules on top of the usual gates:
+
+- **A new additive rule set**, `verdictForApplicationBundle`: the target must be a `.app`
+  directory whose parent is `/Applications`, `~/Applications`, or one subfolder of
+  `/Applications`; never under `/System`; never a `com.apple.*` bundle id; never Silt's own
+  bundle (checked by id *and* by URL); never a symlink.
+- **Support files match on bundle id only** — never on app name. Removing
+  `Application Support/Code` because an app called Code is being uninstalled is the false
+  positive that makes uninstallers dangerous. Each file is still re-checked by
+  `verdictForAppLeftover(..., verifyInstalled: false)` immediately before removal.
+- **Running apps are refused.** Trashing a running bundle leaves a broken state, so the
+  confirmation sheet lists them, offers to quit them, and keeps the confirm button disabled
+  until they are gone.
+- **Trash-only, always.** There is no permanent-delete mode in this feature.
+- macOS 13+ requires **App Management** (System Settings › Privacy & Security) before
+  anything can be moved out of `/Applications`. Silt does not escalate privileges — a
+  refused move is reported per app with that hint.
+
 ## Habits that back the gates
 
 - **Trash by default.** The cache cleaner offers permanent deletion as an explicit,

@@ -22,6 +22,12 @@ no background agent, no "1 GB of junk found!" theatre.
   counted as single items.
 - **Clears only what you tick.** Trash by default, so everything is recoverable; permanent
   deletion is a separate, clearly marked mode. Hand-picked files are Trash-only.
+- **Uninstalls applications properly** — an icon grid of what is installed, with size and
+  last-opened date, search and filters; removing an app takes its Application Support,
+  caches, preferences, containers and login items with it, matched on bundle id and moved to
+  the Trash.
+- **Finds leftovers from apps you already deleted** — the eleven per-user Library locations,
+  matched against installed bundle ids, with low-confidence guesses shown but never removable.
 - **Refuses to touch what it shouldn't.** Simulators, Docker images, package stores, backups —
   shown with their size and the correct native command instead of a delete button.
 

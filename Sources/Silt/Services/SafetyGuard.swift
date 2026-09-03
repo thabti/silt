@@ -45,6 +45,24 @@ enum ArtifactPattern: String, CaseIterable, Identifiable, Sendable {
 /// The rules are deliberately blunt and independent of the catalog, so a typo in a
 /// catalog entry, or a future bug in the UI, still cannot reach anything that matters.
 enum SafetyGuard {
+    static func verdictForApplicationBundle(_ url: URL, bundleID: String,
+                                            homeDirectory: URL = home) -> Verdict {
+        let standardized = url.standardizedFileURL
+        guard standardized.pathExtension.lowercased() == "app" else { return .blocked("Not an application bundle") }
+        let values = try? url.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])
+        guard values?.isDirectory == true else { return .blocked("Not a directory") }
+        guard values?.isSymbolicLink != true else { return .blocked("Symbolic link") }
+        guard !standardized.path.hasPrefix("/System/") else { return .blocked("System application") }
+        guard !bundleID.lowercased().hasPrefix("com.apple.") else { return .blocked("Apple application") }
+        guard bundleID != Bundle.main.bundleIdentifier,
+              standardized != Bundle.main.bundleURL.standardizedFileURL else { return .blocked("Silt cannot uninstall itself") }
+        let parent = standardized.deletingLastPathComponent()
+        let applications = URL(fileURLWithPath: "/Applications").standardizedFileURL
+        let userApplications = homeDirectory.appendingPathComponent("Applications").standardizedFileURL
+        let allowed = parent == applications || parent == userApplications || parent.deletingLastPathComponent() == applications
+        guard allowed else { return .blocked("Application is not in an allowed Applications folder") }
+        return .allowed
+    }
 
     /// User-facing escape hatch for the personal-folder denylist. All structural gates
     /// remain active when this is disabled.

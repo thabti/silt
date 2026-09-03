@@ -267,3 +267,39 @@ struct FilesConfirmSheet: View {
         .frame(width: 560)
     }
 }
+
+struct AppsConfirmSheet: View {
+    @ObservedObject var model: AppModel
+    @State private var runningIDs: Set<String> = []
+    private var total: Int64 { model.pendingAppUninstalls.reduce(0) { $0 + $1.bytes } }
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            Text("Move \(model.pendingAppUninstalls.count) apps and their files to the Trash?").font(Theme.heading(18, weight: .bold))
+            if !runningIDs.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    Label("Running apps must quit first", systemImage: "exclamationmark.triangle.fill").foregroundStyle(Theme.danger)
+                    Text(runningNames).font(Theme.heading(13)).foregroundStyle(.secondary)
+                    Button("Quit apps") { model.quitPendingApps(); refreshRunning() }.buttonStyle(.bordered)
+                    Text("If an app refuses to quit, cancel and quit it manually.").font(Theme.heading(11)).foregroundStyle(.tertiary)
+                }.card(radius: 12, padding: 12)
+            }
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 12) {
+                    ForEach(model.pendingAppUninstalls) { job in
+                        VStack(alignment: .leading, spacing: 7) {
+                            HStack { Image(nsImage: ApplicationIconCache.shared.icon(for: job.app.url)).resizable().scaledToFit().frame(width: 36, height: 36); Text(job.app.name).font(Theme.heading(14, weight: .semibold)); Spacer(); Text(job.app.bytes.byteLabel).font(Theme.figure(14)) }
+                            Text(job.app.url.path).font(.system(size: 10.5, design: .monospaced)).foregroundStyle(.tertiary).lineLimit(1).truncationMode(.middle)
+                            ForEach(job.supportFiles) { file in HStack { Text(file.url.path).font(.system(size: 10.5, design: .monospaced)).lineLimit(1).truncationMode(.middle); Spacer(); Text(file.bytes.byteLabel).font(Theme.figure(11)) }.foregroundStyle(.secondary) }
+                        }.card(radius: 12, padding: 12)
+                    }
+                }
+            }.frame(maxHeight: 360)
+            HStack { Text("Combined total").font(Theme.heading(13, weight: .semibold)); Spacer(); Text(total.byteLabel).font(Theme.figure(16)) }
+            HStack { Spacer(); Button("Cancel") { model.showAppsConfirmation = false; model.pendingAppUninstalls = [] }.keyboardShortcut(.cancelAction); Button("Move to Trash") { model.confirmUninstallApps() }.buttonStyle(.borderedProminent).tint(Theme.danger).disabled(!runningIDs.isEmpty).keyboardShortcut(.defaultAction) }
+        }.padding(26).frame(width: 620)
+        .onAppear { refreshRunning() }
+        .task { while !Task.isCancelled { try? await Task.sleep(for: .milliseconds(750)); refreshRunning() } }
+    }
+    private var runningNames: String { model.pendingAppUninstalls.filter { runningIDs.contains($0.app.bundleID) }.map(\.app.name).joined(separator: ", ") }
+    private func refreshRunning() { runningIDs = model.runningSelectedBundleIDs() }
+}

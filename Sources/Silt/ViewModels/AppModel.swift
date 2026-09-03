@@ -52,6 +52,7 @@ final class AppModel: ObservableObject {
         case files
         case artifacts
         case leftovers
+        case installedApps
 
         var id: String {
             switch self {
@@ -60,6 +61,17 @@ final class AppModel: ObservableObject {
             case .files: "files"
             case .artifacts: "artifacts"
             case .leftovers: "leftovers"
+            case .installedApps: "installedApps"
+            }
+        }
+
+        /// Pages driven by the catalog scan, where the Clean toolbar actions belong.
+        /// Everything else (Large files, Build artifacts, App leftovers, Applications)
+        /// owns its own action, so new pages default to *not* inheriting cache actions.
+        var isCachePage: Bool {
+            switch self {
+            case .overview, .category: true
+            case .files, .artifacts, .leftovers, .installedApps: false
             }
         }
 
@@ -70,6 +82,7 @@ final class AppModel: ObservableObject {
             case .files: "Large files"
             case .artifacts: "Build artifacts"
             case .leftovers: "App leftovers"
+            case .installedApps: "Applications"
             }
         }
     }
@@ -633,6 +646,100 @@ final class AppModel: ObservableObject {
     @Published var leftoverNotice: String?
     @Published private(set) var lastLeftoverScan: Date?
     private var leftoverTask: Task<Void, Never>?
+
+    enum AppsPhase: Equatable { case idle, scanning, ready }
+    struct PendingAppUninstall: Identifiable, Sendable {
+        let app: InstalledApp
+        let supportFiles: [AppLeftoverItem]
+        var id: String { app.id }
+        var bytes: Int64 { app.bytes + supportFiles.reduce(0) { $0 + $1.bytes } }
+    }
+    @Published var appsPhase: AppsPhase = .idle
+    @Published private(set) var installedApps: [InstalledApp] = []
+    @Published var installedAppSelection: Set<String> = []
+    @Published var pendingAppUninstalls: [PendingAppUninstall] = []
+    @Published var showAppsConfirmation = false
+    @Published var applicationsNotice: String?
+    private var installedAppsTask: Task<Void, Never>?
+
+    var selectedInstalledApps: [InstalledApp] { installedApps.filter { $0.isRemovable && installedAppSelection.contains($0.id) } }
+    var selectedInstalledAppBytes: Int64 { selectedInstalledApps.reduce(0) { $0 + $1.bytes } }
+    var totalInstalledAppBytes: Int64 { installedApps.reduce(0) { $0 + $1.bytes } }
+
+    func scanInstalledAppsIfNeeded() { if appsPhase == .idle { scanInstalledApps() } }
+    func scanInstalledApps() {
+        installedAppsTask?.cancel(); appsPhase = .scanning; applicationsNotice = nil; installedApps = []
+        installedAppsTask = Task { [weak self] in
+            let result = await InstalledApps.inventory { app in
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    if !self.installedApps.contains(where: { $0.id == app.id }) { self.installedApps.append(app) }
+                    self.installedApps.sort { $0.bytes > $1.bytes }
+                }
+            }
+            guard !Task.isCancelled else { return }
+            self?.installedApps = result; self?.appsPhase = .ready
+        }
+    }
+    func cancelInstalledAppsScan() { installedAppsTask?.cancel(); installedAppsTask = nil; appsPhase = installedApps.isEmpty ? .idle : .ready }
+    func toggle(_ app: InstalledApp) {
+        guard app.isRemovable else { return }
+        if installedAppSelection.contains(app.id) { installedAppSelection.remove(app.id) } else { installedAppSelection.insert(app.id) }
+    }
+    func requestUninstallApps() {
+        let selected = selectedInstalledApps
+        guard !selected.isEmpty else { return }
+        pendingAppUninstalls = selected.map { app in
+            PendingAppUninstall(app: app, supportFiles: LeftoverScanner.items(forBundleID: app.bundleID, appName: app.name))
+        }
+        showAppsConfirmation = true
+    }
+    /// macOS 13+ gates moving anything out of /Applications behind App Management, and the
+    /// system error does not say so. Point at the setting instead of leaving a dead end.
+    static func uninstallFailureHint(_ error: Error) -> String {
+        let code = (error as NSError).code
+        let permissionDenied = code == NSFileWriteNoPermissionError || code == NSFileReadNoPermissionError
+        guard permissionDenied else { return error.localizedDescription }
+        return "needs permission — allow Silt under System Settings › Privacy & Security › App Management"
+    }
+
+    func confirmUninstallApps() {
+        let jobs = pendingAppUninstalls
+        guard !jobs.isEmpty, runningSelectedBundleIDs().isEmpty else { return }
+        pendingAppUninstalls = []; showAppsConfirmation = false
+        var appsMoved = 0, filesMoved = 0, bytes: Int64 = 0, refusals: [String] = []
+        for job in jobs {
+            let appVerdict = SafetyGuard.verdictForApplicationBundle(job.app.url, bundleID: job.app.bundleID)
+            guard appVerdict.isAllowed else { refusals.append("\(job.app.name): \(appVerdict.reason ?? "blocked")"); continue }
+            do {
+                try FileManager.default.trashItem(at: job.app.url, resultingItemURL: nil)
+                appsMoved += 1; bytes += job.app.bytes
+            } catch {
+                refusals.append("\(job.app.name): \(Self.uninstallFailureHint(error))")
+                continue
+            }
+            for file in job.supportFiles {
+                let verdict = SafetyGuard.verdictForAppLeftover(file.url, matchedOrphanID: job.app.bundleID, verifyInstalled: false)
+                guard verdict.isAllowed else { refusals.append("\(job.app.name): \(verdict.reason ?? "support file blocked")"); continue }
+                do { try FileManager.default.trashItem(at: file.url, resultingItemURL: nil); filesMoved += 1; bytes += file.bytes }
+                catch { refusals.append("\(job.app.name): \(error.localizedDescription)") }
+            }
+        }
+        let fm = FileManager.default
+        installedApps.removeAll { !fm.fileExists(atPath: $0.url.path) }
+        installedAppSelection.formIntersection(Set(installedApps.map(\.id))); disk = DiskSpace.snapshot()
+        applicationsNotice = "Moved \(appsMoved) apps and \(filesMoved) files to the Trash — \(bytes.byteLabel)." +
+            (refusals.isEmpty ? "" : " \(refusals.count) left alone: \(refusals.prefix(3).joined(separator: "; "))")
+        if !leftovers.isEmpty { scanLeftovers() }
+    }
+    func runningSelectedBundleIDs() -> Set<String> {
+        let ids = Set(pendingAppUninstalls.map { $0.app.bundleID })
+        return Set(NSWorkspace.shared.runningApplications.compactMap(\.bundleIdentifier).filter(ids.contains))
+    }
+    func quitPendingApps() {
+        let ids = runningSelectedBundleIDs()
+        NSWorkspace.shared.runningApplications.filter { $0.bundleIdentifier.map(ids.contains) == true }.forEach { $0.terminate() }
+    }
 
     var selectedArtifacts: [ProjectArtifact] { artifacts.filter { artifactSelection.contains($0.id) } }
     var selectedArtifactBytes: Int64 { selectedArtifacts.reduce(0) { $0 + $1.bytes } }
