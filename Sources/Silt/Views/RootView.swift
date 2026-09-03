@@ -19,7 +19,7 @@ struct RootView: View {
         .sheet(isPresented: $model.showConfirmation) {
             ConfirmSheet(model: model)
         }
-        .sheet(isPresented: $model.showArtifactsConfirmation) {
+        .sheet(isPresented: $model.showArtifactsConfirmation, onDismiss: { model.cancelPendingArtifacts() }) {
             SimpleTrashConfirmSheet(
                 title: "Move \(model.pendingArtifactBytes.byteLabel) to the Trash?",
                 scope: "Build artifacts",
@@ -33,7 +33,7 @@ struct RootView: View {
                 onConfirm: { model.trashSelectedArtifacts() }
             )
         }
-        .sheet(isPresented: $model.showLeftoversConfirmation) {
+        .sheet(isPresented: $model.showLeftoversConfirmation, onDismiss: { model.cancelPendingLeftovers() }) {
             SimpleTrashConfirmSheet(
                 title: "Move \(model.pendingLeftoverBytes.byteLabel) to the Trash?",
                 scope: "App leftovers",
@@ -158,7 +158,7 @@ struct RootView: View {
             if model.route == .installedApps {
                 Button(model.selectedInstalledAppBytes > 0 ? "Uninstall \(model.selectedInstalledAppBytes.byteLabel)" : "Uninstall") { model.requestUninstallApps() }
                     .buttonStyle(.borderedProminent).tint(Theme.danger)
-                    .disabled(model.selectedInstalledApps.isEmpty)
+                    .disabled(model.selectedInstalledApps.isEmpty || model.isPreparingUninstall)
             }
 
             if model.route == .artifacts, model.artifactsPhase == .ready, !model.artifacts.isEmpty {
@@ -340,7 +340,7 @@ struct RootView: View {
             .background(Theme.canvas)
             .overlay(alignment: .top) {
                 // A rescan over existing results is a background job, not a new screen.
-                if model.isScanning, model.hasResults {
+                if model.isCurrentPageScanning, model.hasResults {
                     ProgressView(value: model.scanProgress.fraction)
                         .progressViewStyle(.linear)
                         .tint(Theme.accent)

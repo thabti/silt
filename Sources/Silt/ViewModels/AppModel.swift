@@ -216,6 +216,17 @@ final class AppModel: ObservableObject {
         }
     }
 
+    /// Explicit user action, so a later rescan must not overwrite it.
+    func chooseRecommended() {
+        hasChosenSelection = true
+        selectRecommended()
+    }
+
+    func clearSelection() {
+        hasChosenSelection = true
+        selection.removeAll()
+    }
+
     func selectRecommended() {
         // Recommended = the buckets nothing has to re-download. Anything that costs
         // a re-download, and the Trash, stays off until the person opts in.
@@ -266,16 +277,19 @@ final class AppModel: ObservableObject {
                 self.scanProgress = ScanProgress(completed: 0, total: filtered.count, currentName: "")
             }
 
+            let collected = Collected()
             await Scanner.stream(targets: filtered) { bucket in
+                collected.add(bucket.id)
                 Task { @MainActor [weak self] in
                     self?.merge(bucket, generation: generation)
                 }
             }
+            let returnedIDs = collected.ids
 
             guard !Task.isCancelled else { return }
 
             await MainActor.run {
-                self.finishScan(fullScan: !isPartial, measured: filtered.map(\.id))
+                self.finishScan(fullScan: !isPartial, measured: returnedIDs, generation: generation)
             }
         }
     }
@@ -311,16 +325,21 @@ final class AppModel: ObservableObject {
     }
 
     private func reindexBuckets() {
-        bucketIndexByID = Dictionary(uniqueKeysWithValues: scanned.enumerated().map { ($1.id, $0) })
+        bucketIndexByID = Dictionary(scanned.enumerated().map { ($1.id, $0) }, uniquingKeysWith: { first, _ in first })
     }
 
-    private func finishScan(fullScan: Bool, measured: [String] = []) {
-        // Drop buckets this scan was responsible for but never returned — they are gone
-        // from disk. Anything outside its remit (review sizes) is left untouched.
-        if fullScan, !measured.isEmpty {
-            let remit = Set(measured)
-            let returned = Set(scanned.map(\.id))
-            scanned.removeAll { remit.contains($0.id) && !returned.contains($0.id) }
+    private func finishScan(fullScan: Bool, measured: [String] = [], generation: Int) {
+        // An older scan can clear its cancellation check, suspend, and resume after a new
+        // scan has started. Without this it would flip isScanning off and re-sort
+        // half-refreshed state under the newer run.
+        guard generation == scanGeneration else { return }
+        // Drop quick buckets that were on screen before this scan but which the scan did
+        // not return — they no longer exist on disk. `returned` has to come from the scan
+        // itself; deriving it from `scanned` compared the array against itself and never
+        // removed anything. Review buckets are outside a quick scan's remit and survive.
+        if fullScan {
+            let returned = Set(measured)
+            scanned.removeAll { $0.target.kind != .review && !returned.contains($0.id) }
         }
         scanned.sort { $0.bytes > $1.bytes }
         reindexBuckets()
@@ -372,6 +391,7 @@ final class AppModel: ObservableObject {
             await MainActor.run {
                 self.reviewState = .measured
                 self.scanned.sort { $0.bytes > $1.bytes }
+                self.reindexBuckets()
                 self.index = ScanIndex.build(from: self.scanned)
             }
         }
@@ -384,9 +404,10 @@ final class AppModel: ObservableObject {
     }
 
     private func mergeReview(_ bucket: ScannedTarget) {
-        if let existing = scanned.firstIndex(where: { $0.id == bucket.id }) {
+        if let existing = bucketIndexByID[bucket.id] {
             scanned[existing] = bucket
         } else {
+            bucketIndexByID[bucket.id] = scanned.count
             scanned.append(bucket)
         }
         index = ScanIndex.build(from: scanned)
@@ -419,6 +440,7 @@ final class AppModel: ObservableObject {
     /// rescan the cache catalog, so on four of five pages it appeared to do nothing.
     func rescanCurrentPage() {
         switch route {
+        case .category(.review): measureReview(force: true)
         case .overview, .category: scan()
         case .files: scanFiles()
         case .artifacts: scanArtifacts()
@@ -430,6 +452,7 @@ final class AppModel: ObservableObject {
     /// Whether the current page has a scan running, for the toolbar's stop/refresh state.
     var isCurrentPageScanning: Bool {
         switch route {
+        case .category(.review): reviewState == .measuring
         case .overview, .category: isScanning
         case .files: filesPhase == .scanning
         case .artifacts: artifactsPhase == .scanning
@@ -440,6 +463,7 @@ final class AppModel: ObservableObject {
 
     func cancelCurrentPageScan() {
         switch route {
+        case .category(.review): cancelReviewMeasure()
         case .overview, .category: cancelScan()
         case .files: cancelFileScan()
         case .artifacts: cancelArtifactScan()
@@ -451,6 +475,8 @@ final class AppModel: ObservableObject {
     func cancelScan() {
         scanTask?.cancel()
         scanTask = nil
+        // Enqueued merge callbacks would otherwise still match the current generation.
+        scanGeneration &+= 1
         isScanning = false
         phase = hasResults ? .ready : .idle
     }
@@ -754,9 +780,15 @@ final class AppModel: ObservableObject {
         guard app.isRemovable else { return }
         if installedAppSelection.contains(app.id) { installedAppSelection.remove(app.id) } else { installedAppSelection.insert(app.id) }
     }
+    @Published private(set) var isPreparingUninstall = false
+    private var uninstallPrepGeneration = 0
+
     func requestUninstallApps() {
         let chosen = selectedInstalledApps
-        guard !chosen.isEmpty else { return }
+        guard !chosen.isEmpty, !isPreparingUninstall else { return }
+        uninstallPrepGeneration &+= 1
+        let prepGeneration = uninstallPrepGeneration
+        isPreparingUninstall = true
         // Collecting each app's support files walks eleven Library locations and sizes
         // every match. Doing that inline froze the window before the sheet appeared.
         Task { [weak self] in
@@ -767,7 +799,12 @@ final class AppModel: ObservableObject {
                 }
             }.value
             await MainActor.run {
-                guard let self, !jobs.isEmpty else { return }
+                guard let self else { return }
+                // Only the newest request may open the sheet; an older walk finishing
+                // late must not replace it or reopen a cancelled sheet.
+                guard prepGeneration == self.uninstallPrepGeneration else { return }
+                self.isPreparingUninstall = false
+                guard !jobs.isEmpty else { return }
                 self.pendingAppUninstalls = jobs
                 self.showAppsConfirmation = true
             }
@@ -934,9 +971,10 @@ final class AppModel: ObservableObject {
     }
 
     func trashSelectedLeftovers() {
+        let chosen = pendingLeftovers
         pendingLeftovers = []
         showLeftoversConfirmation = false
-        let chosen = selectedLeftovers; guard !chosen.isEmpty else { return }
+        guard !chosen.isEmpty else { return }
         var removed = 0, freed: Int64 = 0; var refused: [String] = []
         for group in chosen { for item in group.items {
             let verdict = SafetyGuard.verdictForAppLeftover(item.url, matchedOrphanID: item.matchedID)
@@ -978,7 +1016,7 @@ final class AppModel: ObservableObject {
             guard !Task.isCancelled else { return }
             await MainActor.run {
                 self?.artifacts = found
-                self?.sortArtifacts()
+                self?.sortArtifacts()   // also rebuilds the index map
                 self?.artifactSelection.formIntersection(Set(found.map(\.id)))
                 self?.artifactsPhase = .ready
                 self?.lastArtifactScan = Date()
@@ -1004,7 +1042,11 @@ final class AppModel: ObservableObject {
 
     private func sortArtifacts() {
         artifacts.sort { $0.bytes > $1.bytes }
-        artifactIndexByID = Dictionary(uniqueKeysWithValues: artifacts.enumerated().map { ($1.id, $0) })
+        reindexArtifacts()
+    }
+
+    private func reindexArtifacts() {
+        artifactIndexByID = Dictionary(artifacts.enumerated().map { ($1.id, $0) }, uniquingKeysWith: { first, _ in first })
     }
 
     func cancelArtifactScan() {
@@ -1028,9 +1070,11 @@ final class AppModel: ObservableObject {
     }
 
     func trashSelectedArtifacts() {
+        // Consume the snapshot the sheet listed. Recomputing from the live selection here
+        // broke the promise that exactly what you saw is what runs.
+        let chosen = pendingArtifacts
         pendingArtifacts = []
         showArtifactsConfirmation = false
-        let chosen = selectedArtifacts
         guard !chosen.isEmpty else { return }
         var removed = 0
         var freed: Int64 = 0
@@ -1049,6 +1093,7 @@ final class AppModel: ObservableObject {
         }
         let fm = FileManager.default
         artifacts.removeAll { !fm.fileExists(atPath: $0.url.path) }
+        reindexArtifacts()
         artifactSelection.formIntersection(Set(artifacts.map(\.id)))
         disk = DiskSpace.snapshot()
         setArtifactNotice("Moved \(removed) \(removed == 1 ? "artifact" : "artifacts") to the Trash — \(freed.byteLabel)." +
@@ -1100,10 +1145,26 @@ final class AppModel: ObservableObject {
             await MainActor.run {
                 guard let self else { return }
                 self.artifacts.removeAll { scopes.contains($0.projectPath.standardizedFileURL) }
+                self.reindexArtifacts()
                 for artifact in refreshed { self.mergeArtifact(artifact) }
                 self.artifactSelection.formIntersection(Set(self.artifacts.map(\.id)))
                 self.lastArtifactScan = Date()
             }
         }
+    }
+}
+
+/// Collects ids from `Scanner.stream`'s callback, which runs off the main actor.
+/// A plain captured array would be a data race.
+final class Collected: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storage: [String] = []
+
+    func add(_ id: String) {
+        lock.lock(); storage.append(id); lock.unlock()
+    }
+
+    var ids: [String] {
+        lock.lock(); defer { lock.unlock() }; return storage
     }
 }

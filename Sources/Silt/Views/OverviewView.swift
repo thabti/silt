@@ -99,9 +99,9 @@ struct OverviewView: View {
                 Text("What to clear")
                     .font(Theme.heading(15, weight: .bold))
                 Spacer()
-                Button("Recommended") { model.selectRecommended() }
+                Button("Recommended") { model.chooseRecommended() }
                 Button("Select all") { model.selectEverythingCleanable() }
-                Button("None") { model.selection.removeAll() }
+                Button("None") { model.clearSelection() }
             }
             .buttonStyle(.bordered)
             .controlSize(.small)
