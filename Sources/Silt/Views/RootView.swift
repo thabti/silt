@@ -220,7 +220,7 @@ struct RootView: View {
                     )
                     .labelStyle(.titleAndIcon)
                 }
-                .disabled(model.scopedBuckets.isEmpty)
+                .disabled(model.scopedBuckets.isEmpty || model.isScanning)
                 .keyboardShortcut(.return, modifiers: .command)
                 .tint(model.mode == .permanent ? Theme.danger : nil)
                 .help(scopeCaption)

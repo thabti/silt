@@ -282,10 +282,12 @@ enum SafetyGuard {
         guard !isAppleIdentifier(standardized.lastPathComponent) else {
             return .blocked("Apple system data")
         }
-        // This rule set was the only one that never consulted the denylist, which left a
-        // single string comparison as the last line of defence over app data.
-        for guarded in protectedPathsForLeftovers where standardized.path == guarded {
-            return .blocked("Protected location")
+        // The path denylist cannot apply here: a leftover always sits *inside* a protected
+        // root such as ~/Library/Preferences, never equals one, and prefix-matching would
+        // block every legitimate orphan. What is needed is an entry-level list of folders
+        // that hold irreplaceable data despite living in an allowed root.
+        guard !sensitiveLeftoverEntries.contains(normalizedLeftoverIdentifier(standardized.lastPathComponent.lowercased())) else {
+            return .blocked("Holds irreplaceable data")
         }
         let roots = ["Application Support", "Caches", "Preferences", "Containers", "Group Containers",
                      "Saved Application State", "HTTPStorages", "WebKit", "Logs", "LaunchAgents", "Application Scripts"]
@@ -309,9 +311,13 @@ enum SafetyGuard {
         return .allowed
     }
 
-    /// Leftover entries sit directly inside their root, so a protected *ancestor* cannot
-    /// apply; what matters is that the entry itself is not one of the protected folders.
-    private static let protectedPathsForLeftovers: [String] = protectedPaths
+    /// Entries that live inside an allowed root but hold data no one can regenerate.
+    /// Apple's own identifiers are handled separately by `isAppleIdentifier`.
+    private static let sensitiveLeftoverEntries: Set<String> = [
+        "mobilesync", "addressbook", "keychains", "calendars", "messages", "mail",
+        "knowledge", "callhistorydb", "callhistorytransactions", "clouddocs",
+        "com.apple.sharedfilelist", "photos", "photolibrary", "safari",
+    ]
 
     /// The subset of protected locations that also applies to hand-picked files.
     private static let fileProtectedPaths: [String] = [

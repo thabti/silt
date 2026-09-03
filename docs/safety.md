@@ -70,9 +70,14 @@ Group Containers are named `group.com.apple.mail`, `groups.com.apple.podcasts` o
 `TEAMID.group.com.apple.notes`. None of those begin with `com.apple.`, so a plain prefix
 test misses every one of them — and a stock Mac has around ninety, holding Mail, Notes,
 Calendar, Contacts and iCloud Drive state. Silt now tests whether `com` is followed by
-`apple` anywhere in the identifier, checks the raw folder name as well as the normalised
-one, and the leftover rule set consults the protected-location denylist like every other
-rule set does. `AppleIdentifierTests` pins all of it.
+`apple` anywhere in the identifier, and checks the raw folder name as well as the normalised
+one. `AppleIdentifierTests` pins that behaviour.
+
+The path denylist deliberately does *not* apply to leftovers: an entry always sits inside a
+protected root such as `~/Library/Preferences` rather than being one, so exact matching never
+fires and prefix matching would block every legitimate orphan. Instead the rule set carries an
+entry-level list of folders that hold irreplaceable data despite living in an allowed root
+(`MobileSync`, `AddressBook`, `Keychains`, `CallHistoryDB` and similar).
 
 ## Habits that back the gates
 

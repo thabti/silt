@@ -397,6 +397,7 @@ final class AppModel: ObservableObject {
 
             guard !Task.isCancelled else { return }
             await MainActor.run {
+                guard reviewRun == self.reviewGeneration else { return }
                 self.reviewState = .measured
                 self.scanned.sort { $0.bytes > $1.bytes }
                 self.reindexBuckets()
@@ -527,6 +528,9 @@ final class AppModel: ObservableObject {
     }
 
     func confirmClean() {
+        // A scan landing mid-clean would overwrite the phase and could swallow the report.
+        // requestClean guards this, but confirmClean is reachable on its own.
+        if isScanning { cancelScan() }
         let buckets = pending
         guard !buckets.isEmpty else { return }
         showConfirmation = false
@@ -738,6 +742,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var lastArtifactScan: Date?
     private var artifactTask: Task<Void, Never>?
     private var artifactIndexByID: [String: Int] = [:]
+    private var artifactGeneration = 0
     private var artifactNoticeTask: Task<Void, Never>?
 
     @Published var leftoversPhase: ScanPhase = .idle
@@ -1015,6 +1020,8 @@ final class AppModel: ObservableObject {
 
     func scanArtifacts() {
         artifactTask?.cancel()
+        artifactGeneration &+= 1
+        let artifactRun = artifactGeneration
         artifactsPhase = .scanning
         clearArtifactNotice()
         artifactProgress = ArtifactScanProgress(visited: 0, found: 0, currentFolder: "")
@@ -1029,15 +1036,16 @@ final class AppModel: ObservableObject {
                         currentFolder: folder.isEmpty ? self.artifactProgress.currentFolder : folder)
                 }
             } onFound: { artifact in
-                Task { @MainActor [weak self] in self?.mergeArtifact(artifact) }
+                Task { @MainActor [weak self] in self?.mergeArtifact(artifact, generation: artifactRun) }
             }
             guard !Task.isCancelled else { return }
             await MainActor.run {
-                self?.artifacts = found
-                self?.sortArtifacts()   // also rebuilds the index map
-                self?.artifactSelection.formIntersection(Set(found.map(\.id)))
-                self?.artifactsPhase = .ready
-                self?.lastArtifactScan = Date()
+                guard let self, artifactRun == self.artifactGeneration else { return }
+                self.artifacts = found
+                self.sortArtifacts()   // also rebuilds the index map
+                self.artifactSelection.formIntersection(Set(found.map(\.id)))
+                self.artifactsPhase = .ready
+                self.lastArtifactScan = Date()
             }
         }
     }
@@ -1047,7 +1055,8 @@ final class AppModel: ObservableObject {
         scanArtifacts()
     }
 
-    private func mergeArtifact(_ artifact: ProjectArtifact) {
+    private func mergeArtifact(_ artifact: ProjectArtifact, generation: Int) {
+        guard generation == artifactGeneration else { return }
         // Was a linear search whose comparison key normalised a URL and allocated two
         // strings, then a full re-sort, on every streamed artifact.
         if let position = artifactIndexByID[artifact.id] {
@@ -1069,6 +1078,7 @@ final class AppModel: ObservableObject {
 
     func cancelArtifactScan() {
         artifactTask?.cancel(); artifactTask = nil
+        artifactGeneration &+= 1
         artifactsPhase = artifacts.isEmpty ? .idle : .ready
     }
 
@@ -1156,6 +1166,8 @@ final class AppModel: ObservableObject {
     private func refreshArtifacts(in projectDirectories: [URL]) {
         guard !projectDirectories.isEmpty else { return }
         artifactTask?.cancel()
+        artifactGeneration &+= 1
+        let refreshRun = artifactGeneration
         let scopes = Set(projectDirectories.map(\.standardizedFileURL))
         artifactTask = Task { [weak self] in
             let refreshed = await ArtifactScanner.scan(projectDirectories: Array(scopes))
@@ -1164,7 +1176,8 @@ final class AppModel: ObservableObject {
                 guard let self else { return }
                 self.artifacts.removeAll { scopes.contains($0.projectPath.standardizedFileURL) }
                 self.reindexArtifacts()
-                for artifact in refreshed { self.mergeArtifact(artifact) }
+                guard refreshRun == self.artifactGeneration else { return }
+                for artifact in refreshed { self.mergeArtifact(artifact, generation: refreshRun) }
                 self.artifactSelection.formIntersection(Set(self.artifacts.map(\.id)))
                 self.lastArtifactScan = Date()
             }
