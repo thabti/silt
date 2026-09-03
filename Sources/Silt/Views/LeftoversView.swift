@@ -2,79 +2,66 @@ import SwiftUI
 
 struct LeftoversView: View {
     @ObservedObject var model: AppModel
+
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
-            HStack(spacing: 16) {
-                IconTile(symbol: "app.dashed", tint: Theme.accent, size: 48)
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("App leftovers").font(Theme.heading(20, weight: .bold))
-                    Text("Data left behind by apps that are no longer installed. Low-confidence matches are shown but never removable.")
-                        .font(Theme.heading(14)).foregroundStyle(.secondary)
-                    if let date = model.lastLeftoverScan { Text("Scanned \(date.formatted(date: .omitted, time: .shortened))").font(Theme.heading(12)).foregroundStyle(.tertiary) }
-                }
-                Spacer()
-                if model.leftoversPhase == .ready { Button("Rescan") { model.scanLeftovers() }.buttonStyle(.bordered) }
-                if model.leftoversPhase == .ready, !model.leftovers.isEmpty {
-                    VStack(alignment: .trailing) { Text(model.totalLeftoverBytes.byteLabel).font(Theme.figure(20)); Text("\(model.leftovers.count) apps").font(Theme.heading(12)).foregroundStyle(.secondary) }
-                }
-            }.card(padding: 22)
-            switch model.leftoversPhase {
-            case .idle:
-                VStack(spacing: 14) {
-                    Text("Find data apps left behind")
-                        .font(Theme.heading(22, weight: .bold))
-                    Text("Silt matches leftover folders against the apps you still have. Low-confidence matches are listed for reference and can never be removed.")
-                        .font(Theme.heading(14))
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
-                        .frame(maxWidth: 460)
-                    Button("Scan for app leftovers") { model.scanLeftovers() }
-                        .buttonStyle(.borderedProminent)
-                        .controlSize(.extraLarge)
-                        .tint(Theme.accent)
-                }
-                .frame(maxWidth: .infinity)
-                .card(padding: 34)
-            case .scanning:
-                VStack(spacing: 12) {
-                    ProgressView().accessibilityLabel("Scanning for app leftovers")
-                    Text("\(model.leftoverProgress.visited.formatted()) items checked · \(model.leftoverProgress.found) found")
-                        .font(Theme.figure(13, weight: .medium))
-                        .foregroundStyle(.secondary)
-                    Text(model.leftoverProgress.currentFolder.isEmpty ? "Reading app data locations…" : model.leftoverProgress.currentFolder)
-                        .font(Theme.heading(12))
-                        .foregroundStyle(.tertiary)
-                        .lineLimit(1)
-                        .accessibilityHidden(true)
-                    Button("Stop") { model.cancelLeftoverScan() }.controlSize(.large)
-                }.frame(maxWidth: .infinity).card(padding: 30)
-            case .ready:
-                if let notice = model.leftoverNotice {
-                    HStack(spacing: 10) {
-                        Image(systemName: "checkmark.circle.fill").foregroundStyle(Theme.good)
-                            .accessibilityHidden(true)
-                        Text(notice).font(Theme.heading(13))
-                        Spacer()
+            PageHeader(symbol: "app.dashed",
+                       title: "App leftovers",
+                       blurb: "Data left behind by apps that are no longer installed. Low-confidence matches are listed for reference and can never be removed.",
+                       scannedAt: model.lastLeftoverScan) {
+                HStack(spacing: 10) {
+                    if model.leftoversPhase == .ready {
                         Button("Rescan") { model.scanLeftovers() }
                     }
-                    .card(radius: 14, padding: 12)
-                    .accessibilityElement(children: .combine)
+                    PageTotals(bytes: model.totalLeftoverBytes,
+                               noun: "app",
+                               count: model.leftovers.count,
+                               selected: model.selectedLeftovers.count)
+                }
+            }
+
+            switch model.leftoversPhase {
+            case .idle:
+                PagePrompt(title: "Find data apps left behind",
+                           message: "Silt matches leftover folders against the apps you still have.",
+                           actionTitle: "Scan for app leftovers") { model.scanLeftovers() }
+
+            case .scanning:
+                PageProgress(counts: "\(model.leftoverProgress.visited.formatted()) items checked · \(model.leftoverProgress.found) found",
+                             folder: model.leftoverProgress.currentFolder,
+                             fallback: "Reading app data locations…",
+                             label: "Scanning for app leftovers") { model.cancelLeftoverScan() }
+
+            case .ready:
+                if let notice = model.leftoverNotice {
+                    PageNotice(text: notice, isWarning: notice.contains("left alone")) {
+                        Button("Rescan") { model.scanLeftovers() }
+                    }
                 }
                 if model.leftovers.isEmpty {
-                    VStack(spacing: 10) {
-                        Text("No app leftovers found").font(Theme.heading(20, weight: .semibold))
-                        Text("Every data folder here belongs to an app you still have installed.")
-                            .font(Theme.heading(13)).foregroundStyle(.secondary)
-                        Button("Scan again") { model.scanLeftovers() }.controlSize(.large)
-                    }.frame(maxWidth: .infinity).card(padding: 30)
+                    PagePrompt(title: "No app leftovers found",
+                               message: "Every data folder here belongs to an app you still have installed.",
+                               actionTitle: "Scan again",
+                               prominent: false) { model.scanLeftovers() }
+                } else {
+                    LazyVStack(spacing: 2) {
+                        ForEach(model.leftovers) { group in
+                            LeftoverGroupRow(group: group,
+                                             selected: model.leftoverSelection.contains(group.id),
+                                             model: model)
+                            if group.id != model.leftovers.last?.id {
+                                Divider().overlay(Theme.hairline).padding(.leading, 96)
+                            }
+                        }
+                    }
+                    .card(radius: 20, padding: 6)
                 }
-                else { LazyVStack(spacing: 2) { ForEach(model.leftovers) { LeftoverGroupRow(group: $0, selected: model.leftoverSelection.contains($0.id), model: model) } }.card(radius: 20, padding: 6) }
             }
         }
     }
 }
 
-private struct LeftoverGroupRow: View {
+struct LeftoverGroupRow: View {
     let group: AppLeftoverGroup; let selected: Bool; @ObservedObject var model: AppModel
     @State private var expanded = false
     var body: some View {
