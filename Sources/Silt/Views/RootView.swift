@@ -260,6 +260,15 @@ struct RootView: View {
             }
             .listStyle(.sidebar)
             .environment(\.sidebarRowSize, .large)
+
+            Divider()
+
+            CapacityGauge(total: model.disk.total,
+                          free: model.disk.free,
+                          reclaimable: model.reclaimableTotal)
+                .padding(.horizontal, 16)
+                .padding(.top, 12)
+                .padding(.bottom, 14)
         }
         .navigationTitle("Silt")
     }

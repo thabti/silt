@@ -816,6 +816,12 @@ final class AppModel: ObservableObject {
     var selectedLeftoverBytes: Int64 { selectedLeftovers.reduce(0) { $0 + $1.bytes } }
     var totalLeftoverBytes: Int64 { leftovers.reduce(0) { $0 + $1.bytes } }
 
+    /// What Silt could genuinely reclaim right now, across every page that has been
+    /// scanned: cache junk, regenerable build artifacts, and data from apps that are gone.
+    /// Large files and installed apps are deliberately excluded — those are your own
+    /// things, a choice rather than junk, and counting them would overstate the number.
+    var reclaimableTotal: Int64 { junkBytes + totalArtifactBytes + totalLeftoverBytes }
+
     func toggle(_ group: AppLeftoverGroup) {
         guard group.isDeletable else { return }
         if leftoverSelection.contains(group.id) { leftoverSelection.remove(group.id) } else { leftoverSelection.insert(group.id) }
