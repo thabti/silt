@@ -19,6 +19,34 @@ struct RootView: View {
         .sheet(isPresented: $model.showConfirmation) {
             ConfirmSheet(model: model)
         }
+        .sheet(isPresented: $model.showArtifactsConfirmation) {
+            SimpleTrashConfirmSheet(
+                title: "Move \(model.pendingArtifactBytes.byteLabel) to the Trash?",
+                scope: "Build artifacts",
+                explanation: "These folders regenerate on the next install or build.",
+                rows: model.pendingArtifacts.map {
+                    .init(id: $0.id, symbol: "shippingbox", tint: Theme.accent,
+                          name: "\($0.projectName) · \($0.pattern.title)",
+                          detail: $0.url.path, bytes: $0.bytes)
+                },
+                onCancel: { model.cancelPendingArtifacts() },
+                onConfirm: { model.trashSelectedArtifacts() }
+            )
+        }
+        .sheet(isPresented: $model.showLeftoversConfirmation) {
+            SimpleTrashConfirmSheet(
+                title: "Move \(model.pendingLeftoverBytes.byteLabel) to the Trash?",
+                scope: "App leftovers",
+                explanation: "Data belonging to apps that are no longer installed.",
+                rows: model.pendingLeftovers.map {
+                    .init(id: $0.id, symbol: "app.dashed", tint: Theme.accent,
+                          name: $0.name,
+                          detail: "\($0.items.count) locations · \($0.id)", bytes: $0.bytes)
+                },
+                onCancel: { model.cancelPendingLeftovers() },
+                onConfirm: { model.trashSelectedLeftovers() }
+            )
+        }
         .sheet(isPresented: $model.showFilesConfirmation) {
             FilesConfirmSheet(model: model)
         }
@@ -69,9 +97,9 @@ struct RootView: View {
         // The scan control sits on the leading side, apart from the destructive actions.
         ToolbarItem(placement: .navigation) {
             Button {
-                model.isScanning ? model.cancelScan() : model.scan()
+                model.isCurrentPageScanning ? model.cancelCurrentPageScan() : model.rescanCurrentPage()
             } label: {
-                if model.isScanning {
+                if model.isCurrentPageScanning {
                     Label("Stop", systemImage: "stop.fill")
                 } else {
                     Label("Rescan", systemImage: "arrow.clockwise")
@@ -79,7 +107,7 @@ struct RootView: View {
             }
             .disabled(model.phase == .cleaning)
             .help(scanHelp)
-            .accessibilityLabel(model.isScanning ? "Stop scanning" : "Rescan")
+            .accessibilityLabel(model.isCurrentPageScanning ? "Stop scanning" : "Rescan this page")
         }
 
         ToolbarItemGroup(placement: .primaryAction) {
@@ -135,7 +163,7 @@ struct RootView: View {
 
             if model.route == .artifacts, model.artifactsPhase == .ready, !model.artifacts.isEmpty {
                 Button {
-                    model.trashSelectedArtifacts()
+                    model.requestTrashArtifacts()
                 } label: {
                     Label(
                         model.selectedArtifactBytes > 0 ? "Move to Trash \(model.selectedArtifactBytes.byteLabel)" : "Move to Trash",
@@ -149,7 +177,7 @@ struct RootView: View {
             }
 
             if model.route == .leftovers, model.leftoversPhase == .ready, !model.leftovers.isEmpty {
-                Button { model.trashSelectedLeftovers() } label: {
+                Button { model.requestTrashLeftovers() } label: {
                     Label(model.selectedLeftoverBytes > 0 ? "Move to Trash \(model.selectedLeftoverBytes.byteLabel)" : "Move to Trash", systemImage: "trash")
                         .labelStyle(.titleAndIcon)
                 }.disabled(model.selectedLeftovers.isEmpty).keyboardShortcut(.return, modifiers: .command)

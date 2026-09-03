@@ -77,8 +77,8 @@ enum FileKind: String, CaseIterable, Identifiable, Hashable {
         add(.video, ["mov", "mp4", "m4v", "avi", "mkv", "webm", "mpg", "mpeg", "wmv", "flv", "prores", "braw", "r3d"])
         add(.audio, ["wav", "aiff", "aif", "mp3", "m4a", "flac", "aac", "ogg", "logicx", "band", "als", "wproj"])
         add(.image, ["png", "jpg", "jpeg", "heic", "gif", "tiff", "tif", "bmp", "raw", "cr2", "nef", "arw", "dng", "psd", "psb", "ai", "sketch", "fig", "xcf", "svg", "webp"])
-        add(.archive, ["zip", "tar", "gz", "tgz", "bz2", "xz", "zst", "7z", "rar", "jar", "war", "aar", "apk", "ipa", "xip", "pkg", "war"])
-        add(.diskImage, ["dmg", "iso", "img", "sparsebundle", "sparseimage", "vdi", "vmdk", "qcow2", "raw", "hds", "vhdx"])
+        add(.archive, ["zip", "tar", "gz", "tgz", "bz2", "xz", "zst", "7z", "rar", "jar", "war", "aar", "apk", "ipa", "xip", "pkg"])
+        add(.diskImage, ["dmg", "iso", "img", "sparsebundle", "sparseimage", "vdi", "vmdk", "qcow2", "hds", "vhdx"])
         add(.binary, ["dylib", "so", "a", "o", "wasm", "node", "exe", "bin", "class", "pyc", "beam", "rlib", "dSYM"])
         add(.code, ["xcodeproj", "xcworkspace", "playground", "swiftmodule", "framework", "xcframework"])
         add(.document, ["pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "key", "numbers", "pages", "epub", "txt", "md", "csv", "json", "xml", "log"])
@@ -87,10 +87,6 @@ enum FileKind: String, CaseIterable, Identifiable, Hashable {
         return map
     }()
 
-    /// Mach-O and universal-binary magic numbers, for files with no useful extension.
-    private static let machOMagics: Set<UInt32> = [
-        0xFEED_FACE, 0xFEED_FACF, 0xCEFA_EDFE, 0xCFFA_EDFE, 0xCAFE_BABE, 0xBEBA_FECA,
-    ]
 
     static func classify(_ url: URL, isPackage: Bool, isExecutable: Bool) -> FileKind {
         let ext = url.pathExtension.lowercased()
@@ -101,22 +97,12 @@ enum FileKind: String, CaseIterable, Identifiable, Hashable {
         if let known = byExtension[ext] {
             return known
         }
-        if ext.isEmpty, isExecutable, looksLikeMachO(url) {
-            return .binary
-        }
         if isExecutable {
             return .binary
         }
-        return ext.isEmpty ? .other : .other
+        return .other
     }
 
-    private static func looksLikeMachO(_ url: URL) -> Bool {
-        guard let handle = try? FileHandle(forReadingFrom: url) else { return false }
-        defer { try? handle.close() }
-        guard let data = try? handle.read(upToCount: 4), data.count == 4 else { return false }
-        let magic = data.withUnsafeBytes { $0.load(as: UInt32.self) }
-        return machOMagics.contains(magic.bigEndian) || machOMagics.contains(magic)
-    }
 }
 
 /// One large file, or one bundle measured as a single thing.

@@ -215,15 +215,19 @@ struct FilesView: View {
     // MARK: List
 
     private var list: some View {
-        LazyVStack(spacing: 2) {
-            ForEach(model.filteredFiles) { entry in
+        // filteredFiles re-runs the whole filter on every access; reading it inside the
+        // ForEach's divider check meant one full filter + allocation per row.
+        let rows = model.filteredFiles
+        let lastID = rows.last?.id
+        return LazyVStack(spacing: 2) {
+            ForEach(rows) { entry in
                 FileRow(
                     entry: entry,
                     isSelected: model.isSelected(entry),
                     onToggle: { model.toggle(entry) },
                     onReveal: { model.reveal(entry.url) }
                 )
-                if entry.id != model.filteredFiles.last?.id {
+                if entry.id != lastID {
                     Divider().opacity(0.35).padding(.leading, 96)
                 }
             }

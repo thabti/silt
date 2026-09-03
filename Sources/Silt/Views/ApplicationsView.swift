@@ -1,7 +1,7 @@
 import AppKit
 import SwiftUI
 
-@MainActor final class ApplicationIconCache: ObservableObject {
+@MainActor final class ApplicationIconCache {
     static let shared = ApplicationIconCache()
     private var images: [String: NSImage] = [:]
     func icon(for url: URL) -> NSImage {
@@ -25,13 +25,16 @@ struct ApplicationsView: View {
     }
 
     var body: some View {
-        ScrollView {
+        // `visible` filters and localized-sorts the whole inventory; compute it once per
+        // render and hand it down rather than letting each reader re-evaluate it.
+        let rows = visible
+        return ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 header
                 if let notice = model.applicationsNotice { noticeRow(notice) }
                 if model.appsPhase == .scanning && model.installedApps.isEmpty { loading }
-                else if visible.isEmpty { empty }
-                else { grid }
+                else if rows.isEmpty { empty }
+                else { grid(rows) }
             }.padding(24).frame(maxWidth: 1100).frame(maxWidth: .infinity)
         }
         .searchable(text: $search, placement: .toolbar, prompt: "Search apps")
@@ -55,9 +58,9 @@ struct ApplicationsView: View {
         }.card(padding: 22)
     }
 
-    private var grid: some View {
+    private func grid(_ rows: [InstalledApp]) -> some View {
         LazyVGrid(columns: [GridItem(.adaptive(minimum: 168), spacing: 14)], spacing: 14) {
-            ForEach(visible) { app in ApplicationTile(app: app, selected: model.installedAppSelection.contains(app.id)) { model.toggle(app) } }
+            ForEach(rows) { app in ApplicationTile(app: app, selected: model.installedAppSelection.contains(app.id)) { model.toggle(app) } }
         }
     }
     private var loading: some View { VStack(spacing: 12) { ProgressView(); Text("Measuring installed applications…").foregroundStyle(.secondary); Button("Stop") { model.cancelInstalledAppsScan() } }.frame(maxWidth: .infinity).card(padding: 34) }
@@ -94,9 +97,9 @@ struct ApplicationsView: View {
             guard queryMatch else { return false }
             switch filter {
             case .all: return true
-            case .large: return app.bytes >= 500 * 1_024 * 1_024
-            case .sixMonths: return app.lastUsed.map { $0 < calendar.date(byAdding: .month, value: -6, to: now)! } ?? true
-            case .year: return app.lastUsed.map { $0 < calendar.date(byAdding: .year, value: -1, to: now)! } ?? true
+            case .large: return app.bytes >= 500 * 1_000_000
+            case .sixMonths: return app.lastUsed.map { $0 < (calendar.date(byAdding: .month, value: -6, to: now) ?? now) } ?? true
+            case .year: return app.lastUsed.map { $0 < (calendar.date(byAdding: .year, value: -1, to: now) ?? now) } ?? true
             }
         }
         return filtered.sorted { a, b in

@@ -119,6 +119,12 @@ final class AppModel: ObservableObject {
     @Published var reviewProgress = ScanProgress(completed: 0, total: 0, currentName: "")
 
     private var scanTask: Task<Void, Never>?
+    /// Bumped per scan so late results from a cancelled run can be discarded.
+    private var scanGeneration = 0
+    /// id → position in `scanned`, so merging a streamed bucket is a lookup, not a search.
+    private var bucketIndexByID: [String: Int] = [:]
+    /// True once the user has touched the selection, which stops a rescan overwriting it.
+    private var hasChosenSelection = false
     private var reviewTask: Task<Void, Never>?
     private var lastCleanedIDs: Set<String> = []
     private var catalogLoadTask: Task<[CleanTarget], Never>?
@@ -195,6 +201,7 @@ final class AppModel: ObservableObject {
 
     func toggle(_ bucket: ScannedTarget) {
         guard bucket.target.kind.isDeletable else { return }
+        hasChosenSelection = true
         if selection.contains(bucket.id) {
             selection.remove(bucket.id)
         } else {
@@ -203,6 +210,7 @@ final class AppModel: ObservableObject {
     }
 
     func setSelection(_ on: Bool, in category: CleanCategory) {
+        hasChosenSelection = true
         for bucket in buckets(in: category) where bucket.target.kind.isDeletable {
             if on { selection.insert(bucket.id) } else { selection.remove(bucket.id) }
         }
@@ -215,6 +223,7 @@ final class AppModel: ObservableObject {
     }
 
     func selectEverythingCleanable() {
+        hasChosenSelection = true
         selection = Set(cleanable.map(\.id))
     }
 
@@ -225,6 +234,8 @@ final class AppModel: ObservableObject {
     ///   to learn that 10 of them are now empty is pure waste.
     func scan(only ids: Set<String>? = nil) {
         scanTask?.cancel()
+        scanGeneration &+= 1
+        let generation = scanGeneration
 
         let isPartial = ids != nil && hasResults
         isScanning = true
@@ -249,32 +260,36 @@ final class AppModel: ObservableObject {
             guard !Task.isCancelled else { return }
 
             await MainActor.run {
-                if !isPartial {
-                    // Review sizes cost a minute to produce — never throw them away
-                    // just because the cheap buckets are being re-measured.
-                    self.replaceAll(with: self.scanned.filter { $0.target.kind == .review })
-                }
+                // Results stay on screen and are replaced bucket by bucket as fresh ones
+                // arrive. Wiping them here emptied the sidebar and dropped the detail pane
+                // onto "Nothing to clean" for the whole scan.
                 self.scanProgress = ScanProgress(completed: 0, total: filtered.count, currentName: "")
             }
 
             await Scanner.stream(targets: filtered) { bucket in
                 Task { @MainActor [weak self] in
-                    self?.merge(bucket)
+                    self?.merge(bucket, generation: generation)
                 }
             }
 
             guard !Task.isCancelled else { return }
 
             await MainActor.run {
-                self.finishScan(fullScan: !isPartial)
+                self.finishScan(fullScan: !isPartial, measured: filtered.map(\.id))
             }
         }
     }
 
-    private func merge(_ bucket: ScannedTarget) {
-        if let existing = scanned.firstIndex(where: { $0.id == bucket.id }) {
+    private func merge(_ bucket: ScannedTarget, generation: Int) {
+        // A cancelled scan's in-flight jobs still finish. Without this check they land
+        // after the next scan has started, reviving stale buckets and pushing the
+        // progress bar past 100%.
+        guard generation == scanGeneration else { return }
+
+        if let existing = bucketIndexByID[bucket.id] {
             scanned[existing] = bucket
         } else {
+            bucketIndexByID[bucket.id] = scanned.count
             scanned.append(bucket)
         }
         index = ScanIndex.build(from: scanned)
@@ -291,18 +306,33 @@ final class AppModel: ObservableObject {
 
     private func replaceAll(with buckets: [ScannedTarget]) {
         scanned = buckets
+        reindexBuckets()
         index = ScanIndex.build(from: buckets)
     }
 
-    private func finishScan(fullScan: Bool) {
+    private func reindexBuckets() {
+        bucketIndexByID = Dictionary(uniqueKeysWithValues: scanned.enumerated().map { ($1.id, $0) })
+    }
+
+    private func finishScan(fullScan: Bool, measured: [String] = []) {
+        // Drop buckets this scan was responsible for but never returned — they are gone
+        // from disk. Anything outside its remit (review sizes) is left untouched.
+        if fullScan, !measured.isEmpty {
+            let remit = Set(measured)
+            let returned = Set(scanned.map(\.id))
+            scanned.removeAll { remit.contains($0.id) && !returned.contains($0.id) }
+        }
         scanned.sort { $0.bytes > $1.bytes }
+        reindexBuckets()
         index = ScanIndex.build(from: scanned)
         isScanning = false
         lastScan = Date()
         disk = DiskSpace.snapshot()
         phase = .ready
 
-        if fullScan {
+        if fullScan, !hasChosenSelection {
+            // Only preseed on the first scan of a session. Re-running a scan must not
+            // silently discard a selection someone spent time curating.
             selectRecommended()
         } else {
             // A partial rescan can empty a bucket. Drop those from the selection instead
@@ -383,6 +413,39 @@ final class AppModel: ObservableObject {
         presentTargets = targets
         hasReviewTargets = !Scanner.reviewTargets(targets).isEmpty
         return targets
+    }
+
+    /// Rescans whatever the current page shows. The toolbar button used to always
+    /// rescan the cache catalog, so on four of five pages it appeared to do nothing.
+    func rescanCurrentPage() {
+        switch route {
+        case .overview, .category: scan()
+        case .files: scanFiles()
+        case .artifacts: scanArtifacts()
+        case .leftovers: scanLeftovers()
+        case .installedApps: scanInstalledApps()
+        }
+    }
+
+    /// Whether the current page has a scan running, for the toolbar's stop/refresh state.
+    var isCurrentPageScanning: Bool {
+        switch route {
+        case .overview, .category: isScanning
+        case .files: filesPhase == .scanning
+        case .artifacts: artifactsPhase == .scanning
+        case .leftovers: leftoversPhase == .scanning
+        case .installedApps: appsPhase == .scanning
+        }
+    }
+
+    func cancelCurrentPageScan() {
+        switch route {
+        case .overview, .category: cancelScan()
+        case .files: cancelFileScan()
+        case .artifacts: cancelArtifactScan()
+        case .leftovers: cancelLeftoverScan()
+        case .installedApps: cancelInstalledAppsScan()
+        }
     }
 
     func cancelScan() {
@@ -538,9 +601,11 @@ final class AppModel: ObservableObject {
             let found = await FileScanner.scan(minimumBytes: minimum, limit: 500) { visited, discovered, folder in
                 Task { @MainActor [weak self] in
                     guard let self else { return }
-                    self.fileProgress.visited += visited
-                    self.fileProgress.found += discovered
-                    if !folder.isEmpty { self.fileProgress.currentFolder = folder }
+                    // One assignment, not three: each published write rebuilt RootView.
+                    self.fileProgress = FileScanProgress(
+                        visited: self.fileProgress.visited + visited,
+                        found: self.fileProgress.found + discovered,
+                        currentFolder: folder.isEmpty ? self.fileProgress.currentFolder : folder)
                 }
             }
             guard !Task.isCancelled else { return }
@@ -637,6 +702,7 @@ final class AppModel: ObservableObject {
     @Published var artifactNotice: String?
     @Published private(set) var lastArtifactScan: Date?
     private var artifactTask: Task<Void, Never>?
+    private var artifactIndexByID: [String: Int] = [:]
     private var artifactNoticeTask: Task<Void, Never>?
 
     @Published var leftoversPhase: Phase = .idle
@@ -689,12 +755,23 @@ final class AppModel: ObservableObject {
         if installedAppSelection.contains(app.id) { installedAppSelection.remove(app.id) } else { installedAppSelection.insert(app.id) }
     }
     func requestUninstallApps() {
-        let selected = selectedInstalledApps
-        guard !selected.isEmpty else { return }
-        pendingAppUninstalls = selected.map { app in
-            PendingAppUninstall(app: app, supportFiles: LeftoverScanner.items(forBundleID: app.bundleID, appName: app.name))
+        let chosen = selectedInstalledApps
+        guard !chosen.isEmpty else { return }
+        // Collecting each app's support files walks eleven Library locations and sizes
+        // every match. Doing that inline froze the window before the sheet appeared.
+        Task { [weak self] in
+            let jobs = await Task.detached(priority: .userInitiated) {
+                chosen.map { app in
+                    PendingAppUninstall(app: app,
+                                        supportFiles: LeftoverScanner.items(forBundleID: app.bundleID, appName: app.name))
+                }
+            }.value
+            await MainActor.run {
+                guard let self, !jobs.isEmpty else { return }
+                self.pendingAppUninstalls = jobs
+                self.showAppsConfirmation = true
+            }
         }
-        showAppsConfirmation = true
     }
     /// macOS 13+ gates moving anything out of /Applications behind App Management. The
     /// error code varies by failure mode and none of them mention the setting, so treat a
@@ -841,7 +918,24 @@ final class AppModel: ObservableObject {
         }
     }
     func cancelLeftoverScan() { leftoverTask?.cancel(); leftoverTask = nil; leftoversPhase = leftovers.isEmpty ? .idle : .ready }
+    @Published var pendingLeftovers: [AppLeftoverGroup] = []
+    @Published var showLeftoversConfirmation = false
+    var pendingLeftoverBytes: Int64 { pendingLeftovers.reduce(0) { $0 + $1.bytes } }
+
+    func requestTrashLeftovers() {
+        guard !selectedLeftovers.isEmpty else { return }
+        pendingLeftovers = selectedLeftovers
+        showLeftoversConfirmation = true
+    }
+
+    func cancelPendingLeftovers() {
+        pendingLeftovers = []
+        showLeftoversConfirmation = false
+    }
+
     func trashSelectedLeftovers() {
+        pendingLeftovers = []
+        showLeftoversConfirmation = false
         let chosen = selectedLeftovers; guard !chosen.isEmpty else { return }
         var removed = 0, freed: Int64 = 0; var refused: [String] = []
         for group in chosen { for item in group.items {
@@ -872,9 +966,11 @@ final class AppModel: ObservableObject {
         artifactTask = Task { [weak self] in
             let found = await ArtifactScanner.scan { visited, discovered, folder in
                 Task { @MainActor [weak self] in
-                    self?.artifactProgress.visited += visited
-                    self?.artifactProgress.found += discovered
-                    if !folder.isEmpty { self?.artifactProgress.currentFolder = folder }
+                    guard let self else { return }
+                    self.artifactProgress = ArtifactScanProgress(
+                        visited: self.artifactProgress.visited + visited,
+                        found: self.artifactProgress.found + discovered,
+                        currentFolder: folder.isEmpty ? self.artifactProgress.currentFolder : folder)
                 }
             } onFound: { artifact in
                 Task { @MainActor [weak self] in self?.mergeArtifact(artifact) }
@@ -882,6 +978,7 @@ final class AppModel: ObservableObject {
             guard !Task.isCancelled else { return }
             await MainActor.run {
                 self?.artifacts = found
+                self?.sortArtifacts()
                 self?.artifactSelection.formIntersection(Set(found.map(\.id)))
                 self?.artifactsPhase = .ready
                 self?.lastArtifactScan = Date()
@@ -895,9 +992,19 @@ final class AppModel: ObservableObject {
     }
 
     private func mergeArtifact(_ artifact: ProjectArtifact) {
-        if let index = artifacts.firstIndex(where: { $0.id == artifact.id }) { artifacts[index] = artifact }
-        else { artifacts.append(artifact) }
+        // Was a linear search whose comparison key normalised a URL and allocated two
+        // strings, then a full re-sort, on every streamed artifact.
+        if let position = artifactIndexByID[artifact.id] {
+            artifacts[position] = artifact
+        } else {
+            artifactIndexByID[artifact.id] = artifacts.count
+            artifacts.append(artifact)
+        }
+    }
+
+    private func sortArtifacts() {
         artifacts.sort { $0.bytes > $1.bytes }
+        artifactIndexByID = Dictionary(uniqueKeysWithValues: artifacts.enumerated().map { ($1.id, $0) })
     }
 
     func cancelArtifactScan() {
@@ -905,7 +1012,24 @@ final class AppModel: ObservableObject {
         artifactsPhase = artifacts.isEmpty ? .idle : .ready
     }
 
+    @Published var pendingArtifacts: [ProjectArtifact] = []
+    @Published var showArtifactsConfirmation = false
+    var pendingArtifactBytes: Int64 { pendingArtifacts.reduce(0) { $0 + $1.bytes } }
+
+    func requestTrashArtifacts() {
+        guard !selectedArtifacts.isEmpty else { return }
+        pendingArtifacts = selectedArtifacts
+        showArtifactsConfirmation = true
+    }
+
+    func cancelPendingArtifacts() {
+        pendingArtifacts = []
+        showArtifactsConfirmation = false
+    }
+
     func trashSelectedArtifacts() {
+        pendingArtifacts = []
+        showArtifactsConfirmation = false
         let chosen = selectedArtifacts
         guard !chosen.isEmpty else { return }
         var removed = 0
@@ -930,6 +1054,18 @@ final class AppModel: ObservableObject {
         setArtifactNotice("Moved \(removed) \(removed == 1 ? "artifact" : "artifacts") to the Trash — \(freed.byteLabel)." +
             (refused.isEmpty ? "" : " \(refused.count) left alone: \(refused.prefix(2).joined(separator: "; "))"))
         refreshArtifacts(in: Array(affectedProjects))
+    }
+
+    /// Failures must not vanish. A clean run fades after 8 seconds; anything reporting
+    /// items left alone stays until the next scan replaces it.
+    private func scheduleNoticeClear(_ hasFailures: Bool, task: inout Task<Void, Never>?, clear: @escaping @MainActor () -> Void) {
+        task?.cancel()
+        guard !hasFailures else { return }
+        task = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(8))
+            guard !Task.isCancelled else { return }
+            clear()
+        }
     }
 
     private func setFileNotice(_ notice: String?) {

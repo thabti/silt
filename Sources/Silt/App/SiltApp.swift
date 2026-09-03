@@ -13,13 +13,15 @@ struct SiltApp: App {
         .windowToolbarStyle(.unified)
         .commands {
             CommandGroup(after: .newItem) {
-                Button("Rescan") { model.scan() }
+                Button("Rescan") { model.rescanCurrentPage() }
                     .keyboardShortcut("r", modifiers: .command)
             }
             CommandGroup(replacing: .help) {
-                Link("What Silt never touches", destination: URL(string: "https://support.apple.com/guide/mac-help/free-up-storage-space-sm3d6a2f4a7b/mac")!)
+                if let guide = URL(string: "https://support.apple.com/guide/mac-help/free-up-storage-space-sm3d6a2f4a7b/mac") {
+                    Link("What Silt never touches", destination: guide)
+                }
             }
-            CommandMenu("View") {
+            CommandGroup(after: .sidebar) {
                 Button("Overview") { model.route = .overview }.keyboardShortcut("1", modifiers: .command)
                 Button("Large files") { model.route = .files }.keyboardShortcut("2", modifiers: .command)
                 Button("Build artifacts") { model.route = .artifacts }.keyboardShortcut("3", modifiers: .command)

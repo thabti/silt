@@ -347,11 +347,87 @@ struct AppsConfirmSheet: View {
                 try? await Task.sleep(for: .milliseconds(500))
             }
         }
-        .task {
-            while !Task.isCancelled {
-                try? await Task.sleep(for: .milliseconds(750))
-                running = model.runningPendingApps()
+    }
+}
+
+/// Confirmation for the two pages that used to delete straight from the toolbar.
+/// Same contract as the other sheets: what is listed is exactly what runs.
+struct SimpleTrashConfirmSheet: View {
+    let title: String
+    let scope: String
+    let explanation: String
+    let rows: [Row]
+    let onCancel: () -> Void
+    let onConfirm: () -> Void
+
+    struct Row: Identifiable {
+        let id: String
+        let symbol: String
+        let tint: Color
+        let name: String
+        let detail: String
+        let bytes: Int64
+    }
+
+    private var total: Int64 { rows.reduce(0) { $0 + $1.bytes } }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: 5) {
+                Text(title).font(Theme.heading(18, weight: .bold))
+                HStack(spacing: 8) {
+                    Pill(text: scope, color: Theme.accent)
+                    Text("\(rows.count) \(rows.count == 1 ? "item" : "items")")
+                        .font(Theme.heading(13, weight: .medium))
+                        .foregroundStyle(.secondary)
+                }
+                Text(explanation).font(Theme.heading(13)).foregroundStyle(.secondary)
+            }
+
+            ScrollView {
+                LazyVStack(spacing: 8) {
+                    ForEach(rows) { row in
+                        HStack(spacing: 12) {
+                            IconTile(symbol: row.symbol, tint: row.tint, size: 30)
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(row.name)
+                                    .font(Theme.heading(14, weight: .semibold))
+                                    .lineLimit(1)
+                                Text(row.detail)
+                                    .font(.system(size: 11, design: .monospaced))
+                                    .foregroundStyle(.tertiary)
+                                    .lineLimit(1)
+                                    .truncationMode(.middle)
+                            }
+                            Spacer()
+                            Text(row.bytes.byteLabel).font(Theme.figure(15, weight: .semibold))
+                        }
+                        .padding(.vertical, 6)
+                        .padding(.horizontal, 10)
+                        .accessibilityElement(children: .combine)
+                    }
+                }
+            }
+            .frame(maxHeight: 260)
+            .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Color.primary.opacity(0.04)))
+
+            HStack {
+                Text("Combined total").font(Theme.heading(13, weight: .semibold))
+                Spacer()
+                Text(total.byteLabel).font(Theme.figure(16))
+            }
+
+            HStack {
+                Spacer()
+                Button("Cancel", action: onCancel).controlSize(.large).keyboardShortcut(.cancelAction)
+                Button("Move to Trash", action: onConfirm)
+                    .controlSize(.large)
+                    .buttonStyle(.borderedProminent)
+                    .tint(Theme.accent)
+                    .keyboardShortcut(.defaultAction)
             }
         }
+        .padding(26)
+        .frame(width: 560)
     }
 }
