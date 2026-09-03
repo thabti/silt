@@ -660,6 +660,8 @@ final class AppModel: ObservableObject {
     @Published var pendingAppUninstalls: [PendingAppUninstall] = []
     @Published var showAppsConfirmation = false
     @Published var applicationsNotice: String?
+    /// True when a bundle could not be moved — almost always App Management not granted.
+    @Published var applicationsNeedsPermission = false
     private var installedAppsTask: Task<Void, Never>?
 
     var selectedInstalledApps: [InstalledApp] { installedApps.filter { $0.isRemovable && installedAppSelection.contains($0.id) } }
@@ -694,19 +696,30 @@ final class AppModel: ObservableObject {
         }
         showAppsConfirmation = true
     }
-    /// macOS 13+ gates moving anything out of /Applications behind App Management, and the
-    /// system error does not say so. Point at the setting instead of leaving a dead end.
+    /// macOS 13+ gates moving anything out of /Applications behind App Management. The
+    /// error code varies by failure mode and none of them mention the setting, so treat a
+    /// failed bundle move as a permission problem and say where to fix it.
     static func uninstallFailureHint(_ error: Error) -> String {
         let code = (error as NSError).code
-        let permissionDenied = code == NSFileWriteNoPermissionError || code == NSFileReadNoPermissionError
+        let permissionDenied = code == NSFileWriteNoPermissionError
+            || code == NSFileReadNoPermissionError
+            || code == NSFileWriteUnknownError
+            || code == NSFileNoSuchFileError
         guard permissionDenied else { return error.localizedDescription }
-        return "needs permission — allow Silt under System Settings › Privacy & Security › App Management"
+        return "blocked by macOS — grant App Management"
+    }
+
+    /// Opens System Settings straight at Privacy & Security › App Management.
+    func openAppManagementSettings() {
+        guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AppBundles") else { return }
+        NSWorkspace.shared.open(url)
     }
 
     func confirmUninstallApps() {
         let jobs = pendingAppUninstalls
         guard !jobs.isEmpty, runningSelectedBundleIDs().isEmpty else { return }
         pendingAppUninstalls = []; showAppsConfirmation = false
+        applicationsNeedsPermission = false
         var appsMoved = 0, filesMoved = 0, bytes: Int64 = 0, refusals: [String] = []
         for job in jobs {
             let appVerdict = SafetyGuard.verdictForApplicationBundle(job.app.url, bundleID: job.app.bundleID)
@@ -716,6 +729,7 @@ final class AppModel: ObservableObject {
                 appsMoved += 1; bytes += job.app.bytes
             } catch {
                 refusals.append("\(job.app.name): \(Self.uninstallFailureHint(error))")
+                applicationsNeedsPermission = true
                 continue
             }
             for file in job.supportFiles {
@@ -728,7 +742,9 @@ final class AppModel: ObservableObject {
         let fm = FileManager.default
         installedApps.removeAll { !fm.fileExists(atPath: $0.url.path) }
         installedAppSelection.formIntersection(Set(installedApps.map(\.id))); disk = DiskSpace.snapshot()
-        applicationsNotice = "Moved \(appsMoved) apps and \(filesMoved) files to the Trash — \(bytes.byteLabel)." +
+        applicationsNotice = (appsMoved == 0
+            ? "Nothing was uninstalled."
+            : "Uninstalled \(appsMoved) \(appsMoved == 1 ? "app" : "apps") and \(filesMoved) support \(filesMoved == 1 ? "file" : "files") — \(bytes.byteLabel) moved to the Trash.") +
             (refusals.isEmpty ? "" : " \(refusals.count) left alone: \(refusals.prefix(3).joined(separator: "; "))")
         if !leftovers.isEmpty { scanLeftovers() }
     }

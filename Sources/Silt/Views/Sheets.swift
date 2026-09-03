@@ -274,7 +274,14 @@ struct AppsConfirmSheet: View {
     private var total: Int64 { model.pendingAppUninstalls.reduce(0) { $0 + $1.bytes } }
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
-            Text("Move \(model.pendingAppUninstalls.count) apps and their files to the Trash?").font(Theme.heading(18, weight: .bold))
+            VStack(alignment: .leading, spacing: 5) {
+                Text(model.pendingAppUninstalls.count == 1
+                     ? "Uninstall \(model.pendingAppUninstalls.first?.app.name ?? "this app")?"
+                     : "Uninstall \(model.pendingAppUninstalls.count) apps?")
+                    .font(Theme.heading(18, weight: .bold))
+                Text("Each app and the support files below move to the Trash, so you can put them back.")
+                    .font(Theme.heading(13)).foregroundStyle(.secondary)
+            }
             if !runningIDs.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
                     Label("Running apps must quit first", systemImage: "exclamationmark.triangle.fill").foregroundStyle(Theme.danger)
@@ -295,7 +302,7 @@ struct AppsConfirmSheet: View {
                 }
             }.frame(maxHeight: 360)
             HStack { Text("Combined total").font(Theme.heading(13, weight: .semibold)); Spacer(); Text(total.byteLabel).font(Theme.figure(16)) }
-            HStack { Spacer(); Button("Cancel") { model.showAppsConfirmation = false; model.pendingAppUninstalls = [] }.keyboardShortcut(.cancelAction); Button("Move to Trash") { model.confirmUninstallApps() }.buttonStyle(.borderedProminent).tint(Theme.danger).disabled(!runningIDs.isEmpty).keyboardShortcut(.defaultAction) }
+            HStack { Spacer(); Button("Cancel") { model.showAppsConfirmation = false; model.pendingAppUninstalls = [] }.keyboardShortcut(.cancelAction); Button("Uninstall") { model.confirmUninstallApps() }.buttonStyle(.borderedProminent).tint(Theme.danger).disabled(!runningIDs.isEmpty).keyboardShortcut(.defaultAction) }
         }.padding(26).frame(width: 620)
         .onAppear { refreshRunning() }
         .task { while !Task.isCancelled { try? await Task.sleep(for: .milliseconds(750)); refreshRunning() } }

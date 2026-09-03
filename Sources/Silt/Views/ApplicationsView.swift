@@ -62,7 +62,30 @@ struct ApplicationsView: View {
     }
     private var loading: some View { VStack(spacing: 12) { ProgressView(); Text("Measuring installed applications…").foregroundStyle(.secondary); Button("Stop") { model.cancelInstalledAppsScan() } }.frame(maxWidth: .infinity).card(padding: 34) }
     private var empty: some View { Text(search.isEmpty ? "No applications found." : "No applications match your search.").frame(maxWidth: .infinity).foregroundStyle(.secondary).card(padding: 34) }
-    private func noticeRow(_ text: String) -> some View { HStack { Image(systemName: "checkmark.circle.fill").foregroundStyle(Theme.good); Text(text).font(Theme.heading(13)); Spacer() }.card(radius: 14, padding: 12) }
+    /// A refused uninstall is not a success — and the reason (App Management) is not
+    /// something anyone guesses, so the row offers the setting directly.
+    @ViewBuilder
+    private func noticeRow(_ text: String) -> some View {
+        let blocked = model.applicationsNeedsPermission
+        HStack(spacing: 10) {
+            Image(systemName: blocked ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
+                .foregroundStyle(blocked ? Theme.danger : Theme.good)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(text).font(Theme.heading(13))
+                if blocked {
+                    Text("macOS blocks apps from removing other apps until you allow it.")
+                        .font(Theme.heading(12)).foregroundStyle(.secondary)
+                }
+            }
+            Spacer()
+            if blocked {
+                Button("Open Settings") { model.openAppManagementSettings() }
+                    .buttonStyle(.borderedProminent)
+                    .tint(Theme.danger)
+            }
+        }
+        .card(radius: 14, padding: 12)
+    }
 
     private var visible: [InstalledApp] {
         let now = Date(), calendar = Calendar.current
@@ -77,7 +100,10 @@ struct ApplicationsView: View {
             }
         }
         return filtered.sorted { a, b in
-            switch sort { case .size: a.bytes > b.bytes; case .name: a.name.localizedStandardCompare(b.name) == .orderedAscending; case .lastUsed: (a.lastUsed ?? .distantPast) > (b.lastUsed ?? .distantPast) }
+            // Apps macOS will not let you remove sink to the bottom — they are reference,
+            // not choices, and they should not sit between things you can act on.
+            if a.isRemovable != b.isRemovable { return a.isRemovable }
+            switch sort { case .size: return a.bytes > b.bytes; case .name: return a.name.localizedStandardCompare(b.name) == .orderedAscending; case .lastUsed: return (a.lastUsed ?? .distantPast) > (b.lastUsed ?? .distantPast) }
         }
     }
 }
