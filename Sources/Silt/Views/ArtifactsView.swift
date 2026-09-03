@@ -23,7 +23,7 @@ struct ArtifactsView: View {
         HStack(spacing: 16) {
             IconTile(symbol: "shippingbox", tint: Theme.accent, size: 48)
             VStack(alignment: .leading, spacing: 4) {
-                Text("Build artifacts").font(Theme.heading(20, weight: .bold))
+                Text("Build artifacts").font(Theme.heading(20, weight: .bold)).accessibilityAddTraits(.isHeader)
                 Text("Dependency and build folders across your home. They regenerate on the next install or build.")
                     .font(Theme.heading(14)).foregroundStyle(.secondary)
                 if let scanned = model.lastArtifactScan {
@@ -59,7 +59,7 @@ struct ArtifactsView: View {
 
     private var scanningCard: some View {
         VStack(spacing: 12) {
-            ProgressView().controlSize(.small)
+            ProgressView().accessibilityLabel("Scanning for build artifacts").controlSize(.small)
             Text("\(model.artifactProgress.visited.formatted()) items checked · \(model.artifactProgress.found) artifacts found")
                 .font(Theme.figure(13, weight: .medium)).foregroundStyle(.secondary)
             Text(model.artifactProgress.currentFolder.isEmpty ? "Walking your home folder…" : model.artifactProgress.currentFolder)
@@ -120,7 +120,7 @@ private struct ArtifactRow: View {
                 HStack(spacing: 8) {
                     Text(artifact.displayPath).font(.system(size: 11.5, design: .monospaced))
                         .foregroundStyle(.tertiary).lineLimit(1).truncationMode(.middle)
-                    if hovering { Button("Reveal", action: onReveal).buttonStyle(.link) }
+                    Button("Reveal", action: onReveal).buttonStyle(.link).opacity(hovering ? 1 : 0)
                 }
             }
             Spacer(minLength: 12)

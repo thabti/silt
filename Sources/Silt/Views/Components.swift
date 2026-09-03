@@ -88,7 +88,7 @@ struct CategoryCard: View {
         .buttonStyle(.plain)
         .onHover { hovering = $0 }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(category.title), \(bytes.byteLabel), \(bucketCount) locations")
+        .accessibilityLabel("\(category.title), \(bytes.byteLabel), \(bucketCount) \(bucketCount == 1 ? "location" : "locations")")
         .accessibilityValue(category == .review ? "Manual only" : (selectedBytes > 0 ? "\(selectedBytes.byteLabel) selected" : "Nothing selected"))
     }
 }
@@ -143,11 +143,12 @@ struct BucketRow: View {
                         .foregroundStyle(.tertiary)
                         .lineLimit(1)
                         .truncationMode(.middle)
-                    if hovering {
-                        Button("Reveal", action: onReveal)
-                            .buttonStyle(.link)
-                            .font(Theme.heading(11, weight: .regular))
-                    }
+                    // Always present so it is keyboard- and VoiceOver-reachable; the
+                    // opacity only hides it visually until the row is hovered.
+                    Button("Reveal", action: onReveal)
+                        .buttonStyle(.link)
+                        .font(Theme.heading(11, weight: .regular))
+                        .opacity(hovering ? 1 : 0)
                 }
             }
 
@@ -192,6 +193,7 @@ struct StatusPanel<Accessory: View>: View {
             VStack(spacing: 6) {
                 Text(title)
                     .font(Theme.heading(20, weight: .bold))
+                    .accessibilityAddTraits(.isHeader)
                 Text(message)
                     .font(Theme.heading(13, weight: .regular))
                     .foregroundStyle(.secondary)

@@ -106,5 +106,27 @@ struct LeftoverGroupRow: View {
 
 private struct LeftoverChildRow: View {
     let item: AppLeftoverItem; @ObservedObject var model: AppModel; @State private var hover = false
-    var body: some View { HStack { Text(item.location).font(Theme.heading(12)); Text(item.url.path).font(.system(size: 11, design: .monospaced)).foregroundStyle(.tertiary).lineLimit(1).truncationMode(.middle); if hover { Button("Reveal") { model.reveal(item.url) }.buttonStyle(.link) }; Spacer(); Text(item.bytes.byteLabel).font(Theme.figure(12)) }.padding(.leading, 88).padding(.trailing, 12).padding(.vertical, 7).onHover { hover = $0 } }
+    var body: some View {
+        HStack(spacing: 8) {
+            Text(item.location).font(Theme.heading(12))
+            Text(item.url.path)
+                .font(.system(size: 11, design: .monospaced))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .truncationMode(.middle)
+            Button("Reveal") { model.reveal(item.url) }
+                .buttonStyle(.link)
+                .opacity(hover ? 1 : 0)
+            Spacer()
+            Text(item.bytes.byteLabel).font(Theme.figure(12))
+        }
+        .padding(.leading, 96)
+        .padding(.trailing, 12)
+        .padding(.vertical, 7)
+        .onHover { hover = $0 }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(item.location), \(item.bytes.byteLabel)")
+        .accessibilityValue(item.url.path)
+    }
 }
+

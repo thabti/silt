@@ -98,10 +98,11 @@ struct OverviewView: View {
             HStack(spacing: 10) {
                 Text("What to clear")
                     .font(Theme.heading(15, weight: .bold))
+                    .accessibilityAddTraits(.isHeader)
                 Spacer()
                 Button("Recommended") { model.chooseRecommended() }
-                Button("Select all") { model.selectEverythingCleanable() }
-                Button("None") { model.clearSelection() }
+                Button("Select All") { model.selectEverythingCleanable() }
+                Button("Select None") { model.clearSelection() }
             }
             .buttonStyle(.bordered)
             .controlSize(.small)
@@ -143,7 +144,7 @@ struct CategoryDetailView: View {
     private var reviewMeasuringCard: some View {
         HStack(spacing: 14) {
             if model.reviewState == .measuring {
-                ProgressView()
+                ProgressView().accessibilityLabel("Measuring review folders")
                     .controlSize(.small)
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Measuring \(model.reviewProgress.total) folders — \(model.reviewProgress.completed) done")
@@ -163,7 +164,7 @@ struct CategoryDetailView: View {
                 Text("Sizes not measured yet — walking these folders takes a while.")
                     .font(Theme.heading(14, weight: .medium))
                 Spacer()
-                Button("Measure now") { model.measureReview(force: true) }
+                Button("Measure") { model.measureReview(force: true) }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.large)
                     .tint(Theme.accent)
@@ -190,6 +191,7 @@ struct CategoryDetailView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(category.title)
                         .font(Theme.heading(20, weight: .bold))
+                        .accessibilityAddTraits(.isHeader)
                     Text(category.blurb)
                         .font(Theme.heading(14))
                         .foregroundStyle(.secondary)
@@ -211,7 +213,7 @@ struct CategoryDetailView: View {
 
             if category != .review {
                 HStack {
-                    Button(allSelected ? "Deselect all" : "Select all") {
+                    Button(allSelected ? "Deselect All" : "Select All") {
                         model.setSelection(!allSelected, in: category)
                     }
                     .buttonStyle(.bordered)
@@ -230,6 +232,8 @@ struct CategoryDetailView: View {
                     VStack(alignment: .leading, spacing: 0) {
                         HStack(spacing: 8) {
                             Text(group.name.uppercased())
+                                .accessibilityLabel(group.name)
+                                .accessibilityAddTraits(.isHeader)
                                 .font(.system(size: 11, weight: .semibold))
                                 .tracking(0.8)
                                 .foregroundStyle(.secondary)

@@ -36,6 +36,7 @@ struct FilesView: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text("Large files")
                     .font(Theme.heading(20, weight: .bold))
+                    .accessibilityAddTraits(.isHeader)
                 Text("Everything in your home folder, biggest first. Bundles like apps and photo libraries count as one item.")
                     .font(Theme.heading(14))
                     .foregroundStyle(.secondary)
@@ -54,7 +55,7 @@ struct FilesView: View {
                         .font(Theme.heading(12))
                         .foregroundStyle(.secondary)
                 }
-                Picker("", selection: $model.fileThreshold) {
+                Picker("Minimum file size", selection: $model.fileThreshold) {
                     ForEach(AppModel.fileThresholds) { threshold in
                         Text(threshold.title).tag(threshold.bytes)
                     }
@@ -91,7 +92,7 @@ struct FilesView: View {
 
     private var scanningCard: some View {
         VStack(spacing: 12) {
-            ProgressView()
+            ProgressView().accessibilityLabel("Scanning for large files")
                 .controlSize(.small)
             Text("\(model.fileProgress.visited.formatted()) items checked · \(model.fileProgress.found) big ones so far")
                 .font(Theme.figure(13, weight: .medium))
@@ -123,7 +124,7 @@ struct FilesView: View {
 
     private var breakdown: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("What is taking the space")
+            Text("What is taking up space")
                 .font(Theme.heading(15, weight: .semibold))
 
             GeometryReader { geo in
@@ -269,11 +270,10 @@ struct FileRow: View {
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                         .truncationMode(.middle)
-                    if hovering {
-                        Button("Reveal", action: onReveal)
-                            .buttonStyle(.link)
-                            .font(Theme.heading(11.5, weight: .medium))
-                    }
+                    Button("Reveal", action: onReveal)
+                        .buttonStyle(.link)
+                        .font(Theme.heading(11.5, weight: .medium))
+                        .opacity(hovering ? 1 : 0)
                 }
             }
 

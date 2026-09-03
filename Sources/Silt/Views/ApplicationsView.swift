@@ -44,12 +44,12 @@ struct ApplicationsView: View {
         HStack(spacing: 16) {
             IconTile(symbol: "app.badge", tint: Theme.accent, size: 48)
             VStack(alignment: .leading, spacing: 3) {
-                Text("Applications").font(Theme.heading(20, weight: .bold))
+                Text("Applications").font(Theme.heading(20, weight: .bold)).accessibilityAddTraits(.isHeader)
                 Text("\(model.installedApps.count) apps · \(model.totalInstalledAppBytes.byteLabel) · \(model.selectedInstalledApps.count) selected")
                     .font(Theme.figure(13)).foregroundStyle(.secondary).monospacedDigit()
             }
             Spacer()
-            if model.appsPhase == .scanning { ProgressView().controlSize(.small); Button("Stop") { model.cancelInstalledAppsScan() } }
+            if model.appsPhase == .scanning { ProgressView().accessibilityLabel("Measuring applications").controlSize(.small); Button("Stop") { model.cancelInstalledAppsScan() } }
             else { Button("Rescan") { model.scanInstalledApps() }.buttonStyle(.bordered) }
             Menu {
                 Section("Sort by") { Picker("Sort", selection: $sort) { ForEach(Sort.allCases) { Text($0.rawValue).tag($0) } } }
